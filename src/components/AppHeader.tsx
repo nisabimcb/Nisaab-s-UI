@@ -6,6 +6,8 @@ import { UserProfile } from "@/types/student";
 
 interface AppHeaderProps {
   user: UserProfile;
+  currentView?: string;
+  onNavigateStudents?: () => void;
   onSignOut: () => void;
   onOpenAddStudent: () => void;
   onSearchChange: (query: string) => void;
@@ -14,6 +16,8 @@ interface AppHeaderProps {
 
 export default function AppHeader({
   user,
+  currentView,
+  onNavigateStudents,
   onSignOut,
   onOpenAddStudent,
   onSearchChange,
@@ -82,7 +86,22 @@ export default function AppHeader({
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-3.5">
+      <div className="flex items-center gap-2.5">
+        {onNavigateStudents && (
+          <button
+            type="button"
+            onClick={onNavigateStudents}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              currentView === "students"
+                ? "bg-blue-600/30 text-blue-300 border-blue-400/50 shadow-[0_0_12px_rgba(59,130,246,0.3)]"
+                : "bg-blue-950/40 hover:bg-blue-900/60 text-slate-300 border-blue-500/25"
+            }`}
+          >
+            <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
+            <span>Student Area</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onOpenAddStudent}

@@ -129,9 +129,51 @@ export default function AuthPortal({ onLoginSuccess }: AuthPortalProps) {
           </button>
         </div>
 
+        {/* Direct Access to Student Area Card */}
+        <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-blue-950/70 via-blue-900/50 to-indigo-950/70 border border-blue-400/35 shadow-[0_0_15px_rgba(37,99,235,0.2)]">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5 font-[family-name:var(--font-heading)]">
+              <GraduationCap className="w-4 h-4 text-blue-400" />
+              <span>Student Section</span>
+            </span>
+            <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              Direct Access
+            </span>
+          </div>
+          <p className="text-[11px] text-blue-200/80 mb-2.5 leading-snug">
+            Need the Student Area immediately? Click below to explore the student roster, records, and student portal:
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const guestUser: UserProfile = {
+                  name: "Demo Administrator",
+                  email: "admin@academy.edu",
+                  role: "Administrator",
+                  avatar: "DA",
+                };
+                localStorage.setItem("sm_active_user", JSON.stringify(guestUser));
+                onLoginSuccess(guestUser);
+              }}
+              className="flex-1 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-[0_0_12px_rgba(37,99,235,0.4)] flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-200" />
+              <span>Open Student Area</span>
+            </button>
+            <a
+              href="/students"
+              className="py-1.5 px-2.5 rounded-lg bg-[#060c16] hover:bg-blue-950/80 border border-blue-500/30 text-blue-300 text-xs font-semibold transition-all hover:text-white"
+              title="Open standalone /students URL"
+            >
+              /students &rarr;
+            </a>
+          </div>
+        </div>
+
         {/* UI Testing Notice */}
-        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-950/30 border border-blue-500/30 mb-5 text-[11px] text-blue-300/90 leading-tight">
-          <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-950/30 border border-blue-500/20 mb-4 text-[11px] text-blue-300/80 leading-tight">
+          <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
           <span>
             <strong>UI Testing Mode:</strong> Any credentials will allow instant sign-in.
           </span>

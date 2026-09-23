@@ -5,6 +5,11 @@ export interface Student {
   grade: string;
   status: 'Active' | 'Pending' | 'Inactive';
   enrolledDate: string;
+  gpa?: number;
+  attendanceRate?: number;
+  major?: string;
+  phone?: string;
+  advisor?: string;
 }
 
 export interface Course {

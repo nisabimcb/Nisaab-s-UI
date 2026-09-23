@@ -140,6 +140,14 @@ export default function Home() {
       if (savedStudents) {
         setStudents(JSON.parse(savedStudents));
       }
+      if (typeof window !== "undefined") {
+        if (
+          window.location.search.includes("view=students") ||
+          window.location.hash.includes("students")
+        ) {
+          setCurrentView("students");
+        }
+      }
     } catch {
       // Fallback gracefully
     }
@@ -225,6 +233,8 @@ export default function Home() {
         <div className="flex flex-col h-screen overflow-hidden">
           <AppHeader
             user={currentUser}
+            currentView={currentView}
+            onNavigateStudents={() => setCurrentView("students")}
             onSignOut={handleSignOut}
             onOpenAddStudent={() => setCurrentView("students")}
             onSearchChange={handleGlobalSearchChange}
