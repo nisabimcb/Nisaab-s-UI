@@ -5,6 +5,7 @@ import AppHeader from "@/components/AppHeader";
 import Sidebar from "@/components/Sidebar";
 import OpenNotebookView from "@/components/OpenNotebookView";
 import EduAgentView from "@/components/EduAgentView";
+import FlashcardsView from "@/components/FlashcardsView";
 import SettingsView from "@/components/SettingsView";
 import ToastContainer from "@/components/ToastContainer";
 import { ToastMessage } from "@/types/student";
@@ -14,7 +15,10 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<string>("notebook");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [omniConfig, setOmniConfig] = useState<OmniRouteConfig>({
-    provider: "gemini",
+    provider: "omniroute",
+    omniRouteUrl: "http://localhost:20128/v1",
+    omniRouteApiKey: "",
+    omniRouteModel: "deepseek-chat",
     geminiApiKey: "",
     deepseekApiKey: "",
     deepseekModel: "deepseek-chat",
@@ -44,9 +48,12 @@ export default function Home() {
         setOmniConfig(JSON.parse(savedOmni));
       }
       if (typeof window !== "undefined") {
-        if (window.location.search.includes("view=tutor")) {
+        const query = window.location.search;
+        if (query.includes("view=tutor")) {
           setCurrentView("tutor");
-        } else if (window.location.search.includes("view=settings")) {
+        } else if (query.includes("view=flashcards")) {
+          setCurrentView("flashcards");
+        } else if (query.includes("view=settings")) {
           setCurrentView("settings");
         }
       }
@@ -56,7 +63,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col relative z-10 bg-[#060b14] text-slate-100">
+    <div className="min-h-screen flex flex-col bg-[#0b0f17] text-slate-100">
       <div className="flex flex-col h-screen overflow-hidden">
         {/* Student App Header */}
         <AppHeader
@@ -74,7 +81,7 @@ export default function Home() {
           />
 
           {/* Main Workstation Body */}
-          <main className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 flex flex-col overflow-hidden bg-[#0b0f17]">
             {currentView === "notebook" && (
               <OpenNotebookView omniConfig={omniConfig} />
             )}
@@ -83,8 +90,12 @@ export default function Home() {
               <EduAgentView omniConfig={omniConfig} />
             )}
 
+            {currentView === "flashcards" && (
+              <FlashcardsView omniConfig={omniConfig} />
+            )}
+
             {currentView === "settings" && (
-              <div className="flex-1 p-6 md:p-8 overflow-y-auto">
+              <div className="flex-1 p-5 md:p-6 overflow-y-auto">
                 <SettingsView
                   onResetSampleData={() =>
                     showToast("Workspace records refreshed.", "success")

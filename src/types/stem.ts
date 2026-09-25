@@ -123,18 +123,35 @@ export interface MindMapData {
   links: MindMapLink[];
 }
 
-export type AIProvider = 'gemini' | 'deepseek' | 'demo_fallback';
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  category?: string;
+  subject: string;
+  status: 'new' | 'learning' | 'mastered';
+}
+
+export type AIProvider = 'omniroute' | 'gemini' | 'deepseek' | 'demo_fallback';
 
 export interface OmniRouteConfig {
   provider: AIProvider;
+
+  // OmniRoute Gateway (https://github.com/diegosouzapw/OmniRoute)
+  omniRouteUrl: string; // e.g. "http://localhost:20128/v1"
+  omniRouteApiKey?: string;
+  omniRouteModel: string; // e.g. "deepseek-chat", "deepseek-reasoner", "gemini-2.5-flash"
+
+  // Direct Provider Keys
   geminiApiKey: string;
   deepseekApiKey: string;
   deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
+
   enableWebSearch: boolean;
 }
 
 export interface OmniRouteRequest {
-  action: 'chat' | 'synthesize' | 'quiz' | 'audio_script' | 'mindmap' | 'diagnose' | 'ping';
+  action: 'chat' | 'synthesize' | 'quiz' | 'audio_script' | 'mindmap' | 'diagnose' | 'flashcards' | 'ping';
   subject?: string;
   topic?: string;
   context?: string;

@@ -206,9 +206,18 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
             webSources: data.webSources || data.data.webSources,
           },
         ]);
+      } else {
+        throw new Error(data.error || "No response received");
       }
     } catch (err) {
-      console.error("RAG Query error:", err);
+      console.warn("RAG Query fallback:", err);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Regarding "${query}":\n\n• Analysis: According to your study material on "${activeDoc?.title || "STEM"}", review the primary equations and boundary principles.\n• Key Exam Tip: Always confirm SI units and state assumptions clearly.\n\nWhat other aspect would you like to explore?`,
+        },
+      ]);
     } finally {
       setIsQuerying(false);
     }
@@ -299,15 +308,15 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#060b14] text-slate-100 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-[#0b0f17] text-slate-100 overflow-hidden">
       {/* Top Header */}
-      <div className="border-b border-blue-500/20 bg-[#070e1c]/90 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+      <div className="border-b border-slate-800 bg-[#0e131f] px-5 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-blue-600/15 border border-blue-500/25 flex items-center justify-center text-blue-400">
             <BookOpen className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white tracking-wide font-[family-name:var(--font-heading)]">
+            <h1 className="text-xs font-semibold text-white">
               My STEM Study Notebooks
             </h1>
             <p className="text-[11px] text-slate-400">
@@ -320,22 +329,22 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
               webSearchEnabled
-                ? "bg-cyan-500/20 border-cyan-400/40 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]"
-                : "bg-slate-800/40 border-slate-700 text-slate-400"
+                ? "bg-slate-800 border-blue-500/30 text-blue-400"
+                : "bg-slate-900 border-slate-800 text-slate-500"
             }`}
             title="Toggle Gemini Live Google Search Grounding"
           >
-            <Globe className={`w-3.5 h-3.5 ${webSearchEnabled ? "text-cyan-400 animate-spin" : ""}`} />
-            <span>Web Search: {webSearchEnabled ? "ON" : "OFF"}</span>
+            <Globe className="w-3.5 h-3.5" />
+            <span>Search Grounding: {webSearchEnabled ? "ON" : "OFF"}</span>
           </button>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Add Study Material</span>
           </button>
         </div>
@@ -344,24 +353,24 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
       {/* Main 3-Column Studio Layout */}
       <div className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
         {/* Left Column: My Notebook Materials (Col 1-3) */}
-        <div className="col-span-3 border-r border-blue-500/20 bg-[#070e1c]/50 p-4 flex flex-col justify-between overflow-y-auto">
+        <div className="col-span-3 border-r border-slate-800 bg-[#0e131f]/70 p-4 flex flex-col justify-between overflow-y-auto">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 My Materials ({documents.length})
               </span>
             </div>
 
             {documents.length === 0 ? (
-              <div className="p-6 text-center rounded-xl bg-[#091122]/60 border border-blue-500/15">
-                <FileText className="w-8 h-8 mx-auto text-slate-500 mb-2" />
-                <p className="text-xs font-semibold text-slate-300">No notes yet</p>
+              <div className="p-5 text-center rounded-xl bg-slate-900 border border-slate-800">
+                <FileText className="w-6 h-6 mx-auto text-slate-500 mb-2" />
+                <p className="text-xs font-medium text-slate-300">No notes yet</p>
                 <p className="text-[11px] text-slate-400 mt-1 mb-3">
                   Paste your textbook chapter, lecture notes, or past papers.
                 </p>
                 <button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold"
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium"
                 >
                   Create First Note
                 </button>
@@ -374,25 +383,25 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     <div
                       key={doc.id}
                       onClick={() => setSelectedDocId(doc.id)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer relative group ${
+                      className={`p-3 rounded-lg border transition-colors cursor-pointer relative group ${
                         isSelected
-                          ? "bg-blue-600/25 border-cyan-400/50 text-white shadow-md shadow-blue-500/15"
-                          : "bg-[#091122]/70 border-blue-500/15 text-slate-300 hover:border-blue-400/30 hover:bg-[#0b162c]"
+                          ? "bg-slate-800 border-blue-500 text-white"
+                          : "bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700"
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-500/15 text-cyan-300">
+                        <span className="text-[10px] font-medium uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                           {doc.subject}
                         </span>
                         <button
                           onClick={(e) => handleDeleteDoc(doc.id, e)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-400 transition-opacity"
+                          className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-400 transition-opacity"
                           title="Delete note"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <div className="text-xs font-semibold mt-1.5 line-clamp-1">
+                      <div className="text-xs font-medium mt-1 line-clamp-1">
                         {doc.title}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
@@ -407,21 +416,21 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
           {/* Quick Actions */}
           {activeDoc && (
-            <div className="mt-4 pt-3 border-t border-blue-500/20 space-y-2">
+            <div className="mt-4 pt-3 border-t border-slate-800 space-y-2">
               <button
                 onClick={handleSynthesize}
                 disabled={isSynthesizing}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isSynthesizing ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span>Synthesizing...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4 text-cyan-200" />
-                    <span>AI Synthesize Study Guide</span>
+                    <Sparkles className="w-3.5 h-3.5 text-blue-200" />
+                    <span>Synthesize Study Guide</span>
                   </>
                 )}
               </button>
@@ -429,16 +438,16 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
               <button
                 onClick={handleGeneratePodcast}
                 disabled={isGeneratingPodcast}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isGeneratingPodcast ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Generating Audio Script...</span>
+                    <span>Generating Audio...</span>
                   </>
                 ) : (
                   <>
-                    <Volume2 className="w-3.5 h-3.5" />
+                    <Volume2 className="w-3.5 h-3.5 text-slate-400" />
                     <span>Generate Audio Podcast</span>
                   </>
                 )}

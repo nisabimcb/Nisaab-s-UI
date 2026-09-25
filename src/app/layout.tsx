@@ -24,10 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${outfit.variable} ${inter.variable} dark h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-[#060b14] text-slate-100 selection:bg-blue-600 selection:text-white">
-        <div className="bg-glow bg-glow-1" />
-        <div className="bg-glow bg-glow-2" />
-        <div className="bg-grid-pattern" />
+      <body className="min-h-full flex flex-col bg-[#0b0f17] text-slate-100 selection:bg-blue-600 selection:text-white">
         {children}
       </body>
     </html>

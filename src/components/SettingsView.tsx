@@ -9,12 +9,13 @@ import {
   Sliders,
   Cpu,
   Sparkles,
-  Server,
   Key,
   CheckCircle2,
   AlertCircle,
   Loader2,
   Radio,
+  ExternalLink,
+  Globe,
 } from "lucide-react";
 import { OmniRouteConfig, AIProvider } from "@/types/stem";
 
@@ -38,14 +39,23 @@ export default function SettingsView({
   const [gradingScale, setGradingScale] = useState("FBISE Standard Letter (A+, A, B, C, D, E)");
 
   // Local state for AI config
-  const [provider, setProvider] = useState<AIProvider>(omniConfig.provider || "gemini");
+  const [provider, setProvider] = useState<AIProvider>(omniConfig.provider || "omniroute");
+  const [omniRouteUrl, setOmniRouteUrl] = useState<string>(
+    omniConfig.omniRouteUrl || "http://localhost:20128/v1"
+  );
+  const [omniRouteApiKey, setOmniRouteApiKey] = useState<string>(
+    omniConfig.omniRouteApiKey || ""
+  );
+  const [omniRouteModel, setOmniRouteModel] = useState<string>(
+    omniConfig.omniRouteModel || "deepseek-chat"
+  );
+
   const [geminiKey, setGeminiKey] = useState<string>(omniConfig.geminiApiKey || "");
   const [deepseekKey, setDeepseekKey] = useState<string>(omniConfig.deepseekApiKey || "");
   const [deepseekModel, setDeepseekModel] = useState<"deepseek-chat" | "deepseek-reasoner">(
     omniConfig.deepseekModel || "deepseek-chat"
   );
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [showDeepseekKey, setShowDeepseekKey] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const [enableWebSearch, setEnableWebSearch] = useState<boolean>(
     omniConfig.enableWebSearch ?? true
   );
@@ -61,9 +71,12 @@ export default function SettingsView({
   const handleSaveAIConfig = () => {
     const updated: OmniRouteConfig = {
       provider,
+      omniRouteUrl,
+      omniRouteApiKey,
+      omniRouteModel,
       geminiApiKey: geminiKey,
       deepseekApiKey: deepseekKey,
-      deepseekModel: deepseekModel,
+      deepseekModel,
       enableWebSearch,
     };
     onUpdateOmniConfig(updated);
@@ -85,9 +98,12 @@ export default function SettingsView({
           action: "ping",
           config: {
             provider,
+            omniRouteUrl,
+            omniRouteApiKey,
+            omniRouteModel,
             geminiApiKey: geminiKey,
             deepseekApiKey: deepseekKey,
-            deepseekModel: deepseekModel,
+            deepseekModel,
             enableWebSearch,
           },
         }),
@@ -110,124 +126,193 @@ export default function SettingsView({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-5 max-w-4xl mx-auto text-slate-200">
       <div>
-        <h2 className="text-xl font-bold font-[family-name:var(--font-heading)] text-white">
+        <h2 className="text-base font-semibold text-white">
           System &amp; AI Engine Settings
         </h2>
-        <p className="text-xs text-slate-400">
-          Configure Omni-Route AI models (DeepSeek &amp; Gemini), live web search grounding, and student preferences
+        <p className="text-xs text-slate-400 mt-0.5">
+          Configure OmniRoute Gateway, Google Gemini, DeepSeek, and study portal preferences
         </p>
       </div>
 
-      {/* 1. Omni-Route AI Engine Configuration */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0c1a36] to-[#070e1c] border border-cyan-500/30 shadow-xl space-y-5">
-        <div className="flex items-center justify-between border-b border-blue-500/20 pb-3">
-          <div className="flex items-center gap-2.5 text-cyan-300 font-bold text-sm">
-            <Cpu className="w-5 h-5 text-cyan-400" />
-            <span>Omni-Route Model Architecture</span>
+      {/* 1. OmniRoute & AI Engine Configuration Card */}
+      <div className="p-5 rounded-xl bg-[#111622] border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2 text-xs font-semibold text-white">
+            <Cpu className="w-4 h-4 text-blue-400" />
+            <span>AI Gateway &amp; Provider Selection</span>
           </div>
-          <span className="text-[10px] font-mono uppercase px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
-            Active: {provider.toUpperCase()}
+          <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono uppercase">
+            Active: {provider}
           </span>
         </div>
 
-        {/* Provider Radio Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Option A: Gemini */}
+        {/* 4 Provider Radio Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+          {/* OmniRoute Gateway */}
+          <div
+            onClick={() => setProvider("omniroute")}
+            className={`p-3 rounded-lg border transition-colors cursor-pointer text-left ${
+              provider === "omniroute"
+                ? "bg-blue-600/15 border-blue-500 text-white"
+                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-white">OmniRoute</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300">
+                Gateway
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-normal">
+              Connect to diegosouzapw/OmniRoute local or hosted AI gateway.
+            </p>
+          </div>
+
+          {/* Google Gemini */}
           <div
             onClick={() => setProvider("gemini")}
-            className={`p-4 rounded-xl border transition-all cursor-pointer ${
+            className={`p-3 rounded-lg border transition-colors cursor-pointer text-left ${
               provider === "gemini"
-                ? "bg-blue-600/25 border-cyan-400 text-white shadow-lg shadow-blue-500/15"
-                : "bg-[#060b16]/70 border-blue-500/15 text-slate-400 hover:border-blue-400/30"
+                ? "bg-blue-600/15 border-blue-500 text-white"
+                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                Google Gemini
-              </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-cyan-300">
-                Web Grounded
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-white">Gemini</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                Search
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 leading-relaxed">
-              Gemini 2.5 Flash with live Google Search Grounding, 1M+ token window, and instant clickable citations.
+            <p className="text-[10px] text-slate-400 leading-normal">
+              Gemini 2.5 Flash with live Google Search Grounding citations.
             </p>
           </div>
 
-          {/* Option B: DeepSeek AI (Omni-Route) */}
+          {/* DeepSeek */}
           <div
             onClick={() => setProvider("deepseek")}
-            className={`p-4 rounded-xl border transition-all cursor-pointer ${
+            className={`p-3 rounded-lg border transition-colors cursor-pointer text-left ${
               provider === "deepseek"
-                ? "bg-purple-600/25 border-purple-400 text-white shadow-lg shadow-purple-500/15"
-                : "bg-[#060b16]/70 border-blue-500/15 text-slate-400 hover:border-purple-400/30"
+                ? "bg-blue-600/15 border-blue-500 text-white"
+                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Cpu className="w-4 h-4 text-purple-400" />
-                DeepSeek AI
-              </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                Omni-Route
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-white">DeepSeek</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300">
+                Direct
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 leading-relaxed">
-              DeepSeek-V3 &amp; DeepSeek-R1 (Reasoner). Step-by-step mathematical reasoning and physics derivations.
+            <p className="text-[10px] text-slate-400 leading-normal">
+              DeepSeek-V3 or DeepSeek-R1 for mathematical reasoning.
             </p>
           </div>
 
-          {/* Option C: Exhibition Demo Engine */}
+          {/* Offline Fallback */}
           <div
             onClick={() => setProvider("demo_fallback")}
-            className={`p-4 rounded-xl border transition-all cursor-pointer ${
+            className={`p-3 rounded-lg border transition-colors cursor-pointer text-left ${
               provider === "demo_fallback"
-                ? "bg-emerald-600/25 border-emerald-400 text-white shadow-lg shadow-emerald-500/15"
-                : "bg-[#060b16]/70 border-blue-500/15 text-slate-400 hover:border-emerald-400/30"
+                ? "bg-blue-600/15 border-blue-500 text-white"
+                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                Exhibition Engine
-              </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                Zero Failures
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-white">Offline</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300">
+                Local
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 leading-relaxed">
-              Dynamic student engine for any custom note or topic. Guaranteed 10ms response for judges with zero Wi-Fi.
+            <p className="text-[10px] text-slate-400 leading-normal">
+              100% air-gapped fallback for competition exhibitions.
             </p>
           </div>
         </div>
 
-        {/* Detailed Provider Settings */}
-        <div className="p-4 rounded-xl bg-[#060b14] border border-blue-500/20 space-y-4">
+        {/* Selected Provider Configuration */}
+        <div className="p-4 rounded-lg bg-slate-900/90 border border-slate-800 space-y-3">
+          {/* OmniRoute Gateway Config */}
+          {provider === "omniroute" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-200">
+                  OmniRoute AI Gateway Connection
+                </span>
+                <a
+                  href="https://github.com/diegosouzapw/OmniRoute"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  <span>OmniRoute GitHub</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">
+                    OmniRoute Base URL
+                  </label>
+                  <input
+                    type="text"
+                    value={omniRouteUrl}
+                    onChange={(e) => setOmniRouteUrl(e.target.value)}
+                    placeholder="http://localhost:20128/v1"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    Default port for diegosouzapw/OmniRoute is 20128
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">
+                    Model Routing Identifier
+                  </label>
+                  <input
+                    type="text"
+                    value={omniRouteModel}
+                    onChange={(e) => setOmniRouteModel(e.target.value)}
+                    placeholder="deepseek-chat or gemini-2.5-flash"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    Matches model names configured in your OmniRoute proxy
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-1">
+                  OmniRoute API Key / Bearer Token (Optional)
+                </label>
+                <input
+                  type={showKeys ? "text" : "password"}
+                  value={omniRouteApiKey}
+                  onChange={(e) => setOmniRouteApiKey(e.target.value)}
+                  placeholder="Optional token if configured in OmniRoute"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Gemini Config */}
           {provider === "gemini" && (
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Google Gemini API Key</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowGeminiKey(!showGeminiKey)}
-                    className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
-                  >
-                    {showGeminiKey ? "Hide Key" : "Show Key"}
-                  </button>
-                </div>
+                <label className="text-[11px] text-slate-400 block mb-1">
+                  Google Gemini API Key
+                </label>
                 <input
-                  type={showGeminiKey ? "text" : "password"}
+                  type={showKeys ? "text" : "password"}
                   value={geminiKey}
                   onChange={(e) => setGeminiKey(e.target.value)}
-                  placeholder="AIzaSy... (Leave blank to use environment default or local fallback)"
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400 font-mono"
+                  placeholder="AIzaSy... (Leave blank to use GEMINI_API_KEY environment var)"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-mono focus:outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -237,105 +322,103 @@ export default function SettingsView({
                   id="webSearchToggle"
                   checked={enableWebSearch}
                   onChange={(e) => setEnableWebSearch(e.target.checked)}
-                  className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
+                  className="w-3.5 h-3.5 accent-blue-600 rounded cursor-pointer"
                 />
                 <label htmlFor="webSearchToggle" className="text-xs text-slate-300 cursor-pointer">
-                  Enable Google Search Grounding for live web citations &amp; board past papers
+                  Enable Google Search Grounding for live web citations
                 </label>
               </div>
             </div>
           )}
 
+          {/* DeepSeek Direct Config */}
           {provider === "deepseek" && (
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-purple-400" />
-                    <span>DeepSeek API Key</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowDeepseekKey(!showDeepseekKey)}
-                    className="text-[10px] text-purple-400 hover:underline cursor-pointer"
-                  >
-                    {showDeepseekKey ? "Hide Key" : "Show Key"}
-                  </button>
-                </div>
+                <label className="text-[11px] text-slate-400 block mb-1">
+                  DeepSeek API Key
+                </label>
                 <input
-                  type={showDeepseekKey ? "text" : "password"}
+                  type={showKeys ? "text" : "password"}
                   value={deepseekKey}
                   onChange={(e) => setDeepseekKey(e.target.value)}
-                  placeholder="sk-... (Leave blank to use DEEPSEEK_API_KEY env var)"
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-purple-500/30 text-white focus:outline-none focus:border-purple-400 font-mono"
+                  placeholder="sk-... (Leave blank to use DEEPSEEK_API_KEY environment var)"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-mono focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                  DeepSeek Omni-Route Model
+                <label className="text-[11px] text-slate-400 block mb-1.5">
+                  Model Variant
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setDeepseekModel("deepseek-chat")}
-                    className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                    className={`p-2 rounded-lg border text-left text-xs transition-colors cursor-pointer ${
                       deepseekModel === "deepseek-chat"
-                        ? "bg-purple-600/30 border-purple-400 text-white"
-                        : "bg-[#070e1c] border-purple-500/20 text-slate-400 hover:border-purple-400/30"
+                        ? "bg-blue-600/20 border-blue-500 text-white"
+                        : "bg-slate-950 border-slate-800 text-slate-400"
                     }`}
                   >
-                    <div className="font-bold text-purple-300">deepseek-chat (V3)</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">
-                      Ultra-fast conversational tutor &amp; on-demand quiz generator
-                    </div>
+                    <div className="font-semibold text-slate-200">deepseek-chat (V3)</div>
+                    <div className="text-[10px] text-slate-500">Fast tutor &amp; quiz generation</div>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setDeepseekModel("deepseek-reasoner")}
-                    className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                    className={`p-2 rounded-lg border text-left text-xs transition-colors cursor-pointer ${
                       deepseekModel === "deepseek-reasoner"
-                        ? "bg-purple-600/30 border-purple-400 text-white"
-                        : "bg-[#070e1c] border-purple-500/20 text-slate-400 hover:border-purple-400/30"
+                        ? "bg-blue-600/20 border-blue-500 text-white"
+                        : "bg-slate-950 border-slate-800 text-slate-400"
                     }`}
                   >
-                    <div className="font-bold text-purple-300">deepseek-reasoner (R1)</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">
-                      Chain-of-thought derivations &amp; deep mathematical reasoning
-                    </div>
+                    <div className="font-semibold text-slate-200">deepseek-reasoner (R1)</div>
+                    <div className="text-[10px] text-slate-500">Chain-of-thought derivations</div>
                   </button>
                 </div>
               </div>
             </div>
           )}
 
+          {/* Offline Engine */}
           {provider === "demo_fallback" && (
-            <p className="text-xs text-emerald-300/90 leading-relaxed">
-              ✓ Exhibition Mode requires no API keys or local server installations. It operates seamlessly out-of-the-box using the dynamic student reasoning engine on whatever notes you provide.
+            <p className="text-xs text-slate-400 leading-relaxed">
+              ✓ Offline Mode requires no API keys or local server installations. It operates out-of-the-box using the dynamic student reasoning engine on whatever notes or topics you supply.
             </p>
           )}
 
           {/* Test & Save Actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={isTesting}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600/30 hover:bg-blue-600/40 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
-            >
-              {isTesting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Testing Connection...</span>
-                </>
-              ) : (
-                <>
-                  <Radio className="w-3.5 h-3.5" />
-                  <span>Test Connection Latency</span>
-                </>
-              )}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-800">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isTesting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Testing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Radio className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Test Latency</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowKeys(!showKeys)}
+                className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                {showKeys ? "Hide Keys" : "Show Keys"}
+              </button>
+            </div>
 
             <button
               type="button"
@@ -343,31 +426,31 @@ export default function SettingsView({
                 handleSaveAIConfig();
                 onSavePreferences();
               }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Apply AI Configuration</span>
+              <span>Save AI Configuration</span>
             </button>
           </div>
 
           {/* Ping Diagnostic Feedback */}
           {pingResult && (
             <div
-              className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 mt-2 ${
+              className={`p-2.5 rounded-lg border text-xs flex items-start gap-2 ${
                 pingResult.success
-                  ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-300"
-                  : "bg-red-950/30 border-red-500/30 text-red-300"
+                  ? "bg-emerald-950/40 border-emerald-800/40 text-emerald-300"
+                  : "bg-rose-950/40 border-rose-800/40 text-rose-300"
               }`}
             >
               {pingResult.success ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
               )}
               <div className="flex-1">
-                <div className="font-bold flex items-center justify-between">
-                  <span>{pingResult.success ? "Status: Operational" : "Status: Attention Needed"}</span>
-                  <span className="font-mono text-[10px]">{pingResult.latencyMs}ms latency</span>
+                <div className="font-semibold flex items-center justify-between">
+                  <span>{pingResult.success ? "Connection Operational" : "Attention Needed"}</span>
+                  <span className="font-mono text-[10px]">{pingResult.latencyMs}ms</span>
                 </div>
                 <div className="text-[11px] mt-0.5 opacity-90">{pingResult.status}</div>
               </div>
@@ -376,83 +459,66 @@ export default function SettingsView({
         </div>
       </div>
 
-      {/* 2. Standard Portal Preferences & Data Storage */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="p-5 rounded-2xl bg-[#070e1c] border border-blue-500/20 space-y-4">
-          <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
-            <Sliders className="w-4 h-4" />
-            <span>Academic Portal Preferences</span>
+      {/* 2. Preferences & Reset */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 rounded-xl bg-[#111622] border border-slate-800 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-white">
+            <Sliders className="w-4 h-4 text-slate-400" />
+            <span>Academic Preferences</span>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
+            <label className="block text-[11px] text-slate-400 mb-1">
               Institution / College Name
             </label>
             <input
               type="text"
               value={academyName}
               onChange={(e) => setAcademyName(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[#060c16] border border-blue-500/20 text-white text-xs outline-none focus:border-blue-400"
+              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
-              Academic Session
+            <label className="block text-[11px] text-slate-400 mb-1">
+              Academic Term
             </label>
             <input
               type="text"
               value={academicTerm}
               onChange={(e) => setAcademicTerm(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[#060c16] border border-blue-500/20 text-white text-xs outline-none focus:border-blue-400"
+              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-blue-500"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
-              Grading Standard
-            </label>
-            <select
-              value={gradingScale}
-              onChange={(e) => setGradingScale(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[#060c16] border border-blue-500/20 text-white text-xs outline-none focus:border-blue-400 cursor-pointer"
-            >
-              <option value="FBISE Standard Letter (A+, A, B, C, D, E)">
-                FBISE Standard Letter (A+, A, B, C, D, E)
-              </option>
-              <option value="Percentage (0 - 100%)">Percentage (0 - 100%)</option>
-              <option value="4.0 GPA Scale">4.0 GPA Scale</option>
-            </select>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#070e1c] border border-blue-500/20 space-y-4">
-          <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
-            <Database className="w-4 h-4" />
-            <span>Exhibition Data Reset</span>
+        <div className="p-4 rounded-xl bg-[#111622] border border-slate-800 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-white">
+            <Database className="w-4 h-4 text-slate-400" />
+            <span>Data Management</span>
           </div>
 
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Quickly reset the system to clean factory demonstration state before presenting to new evaluators.
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Manage your persistent local notebook records, flashcard decks, and quiz scores.
           </p>
 
-          <div className="space-y-3 pt-2">
+          <div className="space-y-2 pt-1">
             <button
               type="button"
               onClick={onResetSampleData}
-              className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-950/40 hover:bg-blue-900/40 text-blue-200 border border-blue-500/25 text-xs font-semibold transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restore Default Sample Records</span>
+              <span>Restore Default Starter Records</span>
             </button>
 
             <button
               type="button"
               onClick={onClearAllData}
-              className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 border border-rose-800/40 text-xs font-medium transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear Stored Records</span>
+              <span>Clear Stored Data</span>
             </button>
           </div>
         </div>
