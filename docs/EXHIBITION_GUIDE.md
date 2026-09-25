@@ -2,7 +2,7 @@
 
 **Competition**: Federal Directorate of Education (FDE) / FBISE Intra-Board HSSC Science Exhibition  
 **Session**: 2026-2027  
-**Project**: **STEM Intellect** (Open-Notebook & Edu-Agent Integration)  
+**Project**: **STEM Intellect** (Open-Notebook & Edu-Agent Student Workstation)  
 **Evaluation Rubric**: 
 - **Subject Matter (20 Marks)**
 - **Presentation (10 Marks)**
@@ -13,54 +13,61 @@
 
 ## 🏆 The 3-Minute Live Judge Demonstration Script
 
-### Phase 1: The Problem & Pitch (45 Seconds)
+### Phase 1: The Problem & Vision (45 Seconds)
 *Aim: Capture Impact on Audience (10 Marks)*
 
-> *"Respected Evaluators and Judges, every year thousands of FBISE HSSC students in Pre-Medical, Pre-Engineering, and ICS face a universal challenge: **textbook fragmentation and passive memorization**. Students read hundreds of pages across Physics, Chemistry, Biology, Math, and CS, yet struggle with concept retention, board numericals, and identifying their real exam weak spots.*
+> *"Respected Evaluators and Judges, every year thousands of FBISE HSSC students in Pre-Medical, Pre-Engineering, and ICS face a major roadblock: **passive memorization and generic AI tools that hallucinate**. Most study apps are cluttered with administrative overhead and static dummy data.
 >
-> *Today, we present **STEM Intellect** — a state-of-the-art digital learning ecosystem that fuses the research grounding of **Open-Notebook** with the adaptive tutoring intelligence of **Edu-Agent**, powered by an **Omni-Route AI Engine** that works both in the cloud and **100% offline air-gapped** on our local machine."*
+> Today, we present **STEM Intellect** — a student-centric personal AI workstation engineered with two breakthrough paradigms:
+> 1. **Open-Notebook Studio**: Student-owned knowledge base with citation-grounded RAG, automatic study synthesis, and 2-host audio podcasts.
+> 2. **Edu-Agent Socratic Mentor**: Live web search grounding via **Google Gemini**, deep step-by-step reasoning via **DeepSeek Omni-Route (V3 & R1)**, on-demand custom quizzes, and automatic <70% weak-spot diagnostics."*
 
 ---
 
 ### Phase 2: Live Feature Walkthrough (90 Seconds)
 *Aim: Capture Subject Matter & Technical Depth (20 Marks)*
 
-#### 1. Open-Notebook Research Studio (Show Notebook Tab)
-- Click **"Open Notebook"** from the Sidebar or Dashboard spotlight card.
-- Select **Physics (HSSC)** -> **Chapter 11: Heat and Thermodynamics**.
-- **Demonstrate Grounding**:
-  - Show the **Executive Study Brief**: Highlight how the system automatically extracted key formulas (Carnot Efficiency $\eta = 1 - T_2/T_1$) and FBISE board exam pitfalls (e.g. Kelvin conversion traps).
-  - Ask a question in the **Citation-Grounded Q&A**: Type *"Why can't efficiency reach 100%?"*.
-  - Point to the **highlighted source citation** proving the answer is grounded in the National Book Foundation textbook without hallucination.
+#### 1. Open-Notebook Studio (Student-Driven Knowledge)
+- Open the **Open Notebook** tab.
+- **Show Note Management**:
+  - Point out that all notes are student-uploaded (custom notes, past paper excerpts, textbook summaries) with persistent local storage.
+  - Click **"+ Add Study Note"** to show how easy it is to add any chapter or custom topic.
+- **Demonstrate 1-Click Synthesis**:
+  - Click **"Synthesize Brief"**: Highlight the executive summary, key formulas, and FBISE exam traps extracted directly from the notes.
 - **Demonstrate Audio Podcast (NotebookLM style)**:
-  - Click the **"Audio Podcast"** tab and press **Play**.
-  - Let the judges hear Dr. Sarah and Alex conversing about the Carnot cycle with synchronized dialogue highlighting!
+  - Click the **"Audio Podcast"** tab and press **Play Dialogue**.
+  - Let judges hear Dr. Sarah and Alex conversing about the thermodynamics derivation with real-time speech synchronization and speed controls!
+- **Demonstrate Citation-Grounded Q&A**:
+  - Ask a question in the notebook assistant. Show how answers link directly back to notes and web sources.
 
-#### 2. Edu-Agent: Socratic Tutor & <70% Mastery Diagnostic (Show Tutor Tab)
-- Click **"Edu-Agent Tutor"** from the Sidebar.
-- **Show Socratic Interaction**:
-  - Show how the AI doesn't spoon-feed answers, but guides the student through Socratic inquiry.
-- **Run the SLO Interactive Quiz**:
-  - Go to the **SLO Quiz Engine** tab. Answer the questions on Carnot engine numericals.
-  - Show the instant scoring and explain:
-    > *"Whenever a student's chapter score drops below 70%, Edu-Agent automatically classifies the topic as an **Academic Weak Spot**."*
-- **Inspect Weak-Spot Diagnostic**:
-  - Switch to the **Weak-Spot Diagnostic (<70%)** tab.
-  - Show the 3-step remedial action plan automatically prescribed for the student.
-- **Show Concept Mind Map**:
-  - Switch to the **Concept Mind Map** tab. Click on a node (e.g. *Carnot Efficiency*) to show prerequisite relations connecting First Law $\to$ Isothermal/Adiabatic Strokes $\to$ Second Law limits.
+#### 2. Edu-Agent: Socratic Tutor & <70% Diagnostic Engine
+- Switch to **Edu-Agent** from the Sidebar.
+- **Show Live Google Search Grounding**:
+  - Point out the **"Web Search: ON"** badge powered by Google Gemini Search Grounding.
+  - Ask: *"What are the most recent applications of the Carnot cycle in cryogenic engineering?"*
+  - Show the live clickable web sources returned directly beneath the explanation.
+- **Show DeepSeek Omni-Route Reasoning**:
+  - If DeepSeek is active, highlight the **DeepSeek Chain-of-Thought (R1 Reasoner)** box showing step-by-step mathematical deductions.
+- **Generate an On-Demand Quiz for ANY Topic**:
+  - Switch to the **Practice Quiz** tab.
+  - Type any topic (e.g., *"Photoelectric Effect and Work Function"*) and click **"Generate 5 MCQs"**.
+  - Show how the AI generates questions tailored to that specific concept on-the-fly!
+- **Demonstrate the <70% Weak-Spot Diagnostic Engine**:
+  - Answer the quiz. If the score is `< 70%`, show how the system automatically registers the topic into the **Weak Spots** tab with a tailored 3-step recovery prescription.
+- **Interactive Concept Knowledge Graph**:
+  - Switch to the **Mind Map** tab. Generate a concept map for any topic to visualize prerequisite relationships.
 
 ---
 
-### Phase 3: Technical Resilience & Omni-Route (45 Seconds)
-*Aim: Capture Presentation & Novel Scientific Ideas (10 Marks)*
+### Phase 3: Omni-Route Architecture & Reliability (45 Seconds)
+*Aim: Capture Presentation & Novel Technical Ideas (10 Marks)*
 
 - Click **Settings** (or the AI badge in the top bar).
-- Show the **Omni-Route AI Model Selector**:
-  - **Google Gemini 2.5 Flash**: For cloud research with 1M+ token context.
-  - **Local Qwen 14B (Ollama)**: For private, air-gapped offline inference on the competition laptop without requiring venue Wi-Fi.
-  - **Exhibition Engine**: For instant 12ms failover guaranteeing zero crashes.
-- Click **"Test Connection Latency"** to show real-time live ping diagnostics.
+- Show the **Omni-Route Model Architecture**:
+  - **Google Gemini 2.5 Flash**: Cloud speed, 1M+ token window, and live Google Search Grounding.
+  - **DeepSeek AI (Omni-Route)**: DeepSeek-V3 for lightning-fast tutor interaction and DeepSeek-R1 for chain-of-thought mathematical derivations.
+  - **Exhibition Engine (Fallback)**: 100% resilient dynamic engine guaranteeing 10ms responses if venue Wi-Fi drops.
+- Click **"Test Connection Latency"** to demonstrate live ping diagnostics in front of the evaluators.
 
 ---
 
@@ -72,8 +79,8 @@
    npm run dev
    ```
    Open your browser to: **`http://localhost:3000`**
-2. **If Venue Wi-Fi is Slow or Unavailable**:
-   - The app has the **Exhibition Engine** active by default. It responds in 12ms with authentic FBISE data for all 5 subjects, so your demo will **never fail or freeze** in front of judges!
-   - If you have Ollama installed with `qwen2.5:14b`, switch to **Local Qwen 14B** in Settings to demonstrate on-device local AI.
-3. **Keyboard Shortcut**:
-   - Press `/` at any time to instantly focus the global search bar.
+2. **If Venue Wi-Fi is Slow or Unreliable**:
+   - The app's **Exhibition Engine** operates automatically if external network calls fail, ensuring **zero crashes or frozen screens** in front of judges!
+3. **To Use Your Own API Keys**:
+   - Navigate to **Settings** and paste your `GEMINI_API_KEY` or `DEEPSEEK_API_KEY`.
+   - Toggle DeepSeek between `deepseek-chat` and `deepseek-reasoner` depending on whether you want high-speed Q&A or deep mathematical proofs.

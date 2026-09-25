@@ -59,6 +59,7 @@ export interface SocraticMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  reasoningContent?: string;
   citations?: Citation[];
   webSources?: WebSearchSource[];
   timestamp: string;
@@ -122,13 +123,13 @@ export interface MindMapData {
   links: MindMapLink[];
 }
 
-export type AIProvider = 'gemini' | 'qwen_local' | 'demo_fallback';
+export type AIProvider = 'gemini' | 'deepseek' | 'demo_fallback';
 
 export interface OmniRouteConfig {
   provider: AIProvider;
   geminiApiKey: string;
-  ollamaBaseUrl: string;
-  localModelName: string;
+  deepseekApiKey: string;
+  deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
   enableWebSearch: boolean;
 }
 

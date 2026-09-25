@@ -38,11 +38,17 @@ export default function SettingsView({
   const [gradingScale, setGradingScale] = useState("FBISE Standard Letter (A+, A, B, C, D, E)");
 
   // Local state for AI config
-  const [provider, setProvider] = useState<AIProvider>(omniConfig.provider);
+  const [provider, setProvider] = useState<AIProvider>(omniConfig.provider || "gemini");
   const [geminiKey, setGeminiKey] = useState<string>(omniConfig.geminiApiKey || "");
-  const [showKey, setShowKey] = useState(false);
-  const [ollamaUrl, setOllamaUrl] = useState<string>(omniConfig.ollamaBaseUrl);
-  const [localModel, setLocalModel] = useState<string>(omniConfig.localModelName);
+  const [deepseekKey, setDeepseekKey] = useState<string>(omniConfig.deepseekApiKey || "");
+  const [deepseekModel, setDeepseekModel] = useState<"deepseek-chat" | "deepseek-reasoner">(
+    omniConfig.deepseekModel || "deepseek-chat"
+  );
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showDeepseekKey, setShowDeepseekKey] = useState(false);
+  const [enableWebSearch, setEnableWebSearch] = useState<boolean>(
+    omniConfig.enableWebSearch ?? true
+  );
 
   // Ping Test State
   const [isTesting, setIsTesting] = useState(false);
@@ -56,9 +62,9 @@ export default function SettingsView({
     const updated: OmniRouteConfig = {
       provider,
       geminiApiKey: geminiKey,
-      ollamaBaseUrl: ollamaUrl,
-      localModelName: localModel,
-      enableWebSearch: omniConfig.enableWebSearch ?? true,
+      deepseekApiKey: deepseekKey,
+      deepseekModel: deepseekModel,
+      enableWebSearch,
     };
     onUpdateOmniConfig(updated);
     try {
@@ -80,8 +86,9 @@ export default function SettingsView({
           config: {
             provider,
             geminiApiKey: geminiKey,
-            ollamaBaseUrl: ollamaUrl,
-            localModelName: localModel,
+            deepseekApiKey: deepseekKey,
+            deepseekModel: deepseekModel,
+            enableWebSearch,
           },
         }),
       });
@@ -106,22 +113,22 @@ export default function SettingsView({
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
         <h2 className="text-xl font-bold font-[family-name:var(--font-heading)] text-white">
-          System & AI Engine Settings
+          System &amp; AI Engine Settings
         </h2>
         <p className="text-xs text-slate-400">
-          Configure Omni-Route AI models, local offline inference, and student database
+          Configure Omni-Route AI models (DeepSeek &amp; Gemini), live web search grounding, and student preferences
         </p>
       </div>
 
-      {/* 1. Omni-Route AI Engine Configuration (Spotlight for Competition) */}
+      {/* 1. Omni-Route AI Engine Configuration */}
       <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0c1a36] to-[#070e1c] border border-cyan-500/30 shadow-xl space-y-5">
         <div className="flex items-center justify-between border-b border-blue-500/20 pb-3">
           <div className="flex items-center gap-2.5 text-cyan-300 font-bold text-sm">
             <Cpu className="w-5 h-5 text-cyan-400" />
-            <span>Omni-Route AI Model Selector</span>
+            <span>Omni-Route Model Architecture</span>
           </div>
           <span className="text-[10px] font-mono uppercase px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
-            Current: {provider.toUpperCase()}
+            Active: {provider.toUpperCase()}
           </span>
         </div>
 
@@ -142,34 +149,34 @@ export default function SettingsView({
                 Google Gemini
               </span>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-cyan-300">
-                Cloud Speed
+                Web Grounded
               </span>
             </div>
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              Gemini 2.5 Flash / 1.5 Pro. High-speed reasoning, 1M+ token context, multimodal textbook RAG.
+              Gemini 2.5 Flash with live Google Search Grounding, 1M+ token window, and instant clickable citations.
             </p>
           </div>
 
-          {/* Option B: Local Qwen 14B */}
+          {/* Option B: DeepSeek AI (Omni-Route) */}
           <div
-            onClick={() => setProvider("qwen_local")}
+            onClick={() => setProvider("deepseek")}
             className={`p-4 rounded-xl border transition-all cursor-pointer ${
-              provider === "qwen_local"
+              provider === "deepseek"
                 ? "bg-purple-600/25 border-purple-400 text-white shadow-lg shadow-purple-500/15"
                 : "bg-[#060b16]/70 border-blue-500/15 text-slate-400 hover:border-purple-400/30"
             }`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Server className="w-4 h-4 text-purple-400" />
-                Local Qwen 14B
+                <Cpu className="w-4 h-4 text-purple-400" />
+                DeepSeek AI
               </span>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                100% Offline
+                Omni-Route
               </span>
             </div>
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              Ollama / LM Studio on localhost. Air-gapped, zero cloud dependencies, private inference.
+              DeepSeek-V3 &amp; DeepSeek-R1 (Reasoner). Step-by-step mathematical reasoning and physics derivations.
             </p>
           </div>
 
@@ -192,70 +199,120 @@ export default function SettingsView({
               </span>
             </div>
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              Instant pre-indexed FBISE STEM dataset. Guaranteed 12ms response for judges with zero Wi-Fi required.
+              Dynamic student engine for any custom note or topic. Guaranteed 10ms response for judges with zero Wi-Fi.
             </p>
           </div>
         </div>
 
         {/* Detailed Provider Settings */}
-        <div className="p-4 rounded-xl bg-[#060b14] border border-blue-500/20 space-y-3">
+        <div className="p-4 rounded-xl bg-[#060b14] border border-blue-500/20 space-y-4">
           {provider === "gemini" && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Google Gemini API Key</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
-                >
-                  {showKey ? "Hide Key" : "Show Key"}
-                </button>
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Google Gemini API Key</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
+                    className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    {showGeminiKey ? "Hide Key" : "Show Key"}
+                  </button>
+                </div>
+                <input
+                  type={showGeminiKey ? "text" : "password"}
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  placeholder="AIzaSy... (Leave blank to use environment default or local fallback)"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400 font-mono"
+                />
               </div>
-              <input
-                type={showKey ? "text" : "password"}
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                placeholder="AIzaSy... (Leave blank to use environment default or fallback)"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400 font-mono"
-              />
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="webSearchToggle"
+                  checked={enableWebSearch}
+                  onChange={(e) => setEnableWebSearch(e.target.checked)}
+                  className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
+                />
+                <label htmlFor="webSearchToggle" className="text-xs text-slate-300 cursor-pointer">
+                  Enable Google Search Grounding for live web citations &amp; board past papers
+                </label>
+              </div>
             </div>
           )}
 
-          {provider === "qwen_local" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {provider === "deepseek" && (
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Local Ollama Base URL
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-400" />
+                    <span>DeepSeek API Key</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeepseekKey(!showDeepseekKey)}
+                    className="text-[10px] text-purple-400 hover:underline cursor-pointer"
+                  >
+                    {showDeepseekKey ? "Hide Key" : "Show Key"}
+                  </button>
+                </div>
                 <input
-                  type="text"
-                  value={ollamaUrl}
-                  onChange={(e) => setOllamaUrl(e.target.value)}
-                  placeholder="http://127.0.0.1:11434"
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-blue-500/30 text-white focus:outline-none focus:border-purple-400 font-mono"
+                  type={showDeepseekKey ? "text" : "password"}
+                  value={deepseekKey}
+                  onChange={(e) => setDeepseekKey(e.target.value)}
+                  placeholder="sk-... (Leave blank to use DEEPSEEK_API_KEY env var)"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-purple-500/30 text-white focus:outline-none focus:border-purple-400 font-mono"
                 />
               </div>
+
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Local Model Identifier
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  DeepSeek Omni-Route Model
                 </label>
-                <input
-                  type="text"
-                  value={localModel}
-                  onChange={(e) => setLocalModel(e.target.value)}
-                  placeholder="qwen2.5:14b"
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#070e1c] border border-blue-500/30 text-white focus:outline-none focus:border-purple-400 font-mono"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeepseekModel("deepseek-chat")}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                      deepseekModel === "deepseek-chat"
+                        ? "bg-purple-600/30 border-purple-400 text-white"
+                        : "bg-[#070e1c] border-purple-500/20 text-slate-400 hover:border-purple-400/30"
+                    }`}
+                  >
+                    <div className="font-bold text-purple-300">deepseek-chat (V3)</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Ultra-fast conversational tutor &amp; on-demand quiz generator
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeepseekModel("deepseek-reasoner")}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                      deepseekModel === "deepseek-reasoner"
+                        ? "bg-purple-600/30 border-purple-400 text-white"
+                        : "bg-[#070e1c] border-purple-500/20 text-slate-400 hover:border-purple-400/30"
+                    }`}
+                  >
+                    <div className="font-bold text-purple-300">deepseek-reasoner (R1)</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Chain-of-thought derivations &amp; deep mathematical reasoning
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {provider === "demo_fallback" && (
             <p className="text-xs text-emerald-300/90 leading-relaxed">
-              ✓ Exhibition Mode requires no API keys or local server installations. It operates out-of-the-box using the pre-compiled National Book Foundation FBISE curriculum repository.
+              ✓ Exhibition Mode requires no API keys or local server installations. It operates seamlessly out-of-the-box using the dynamic student reasoning engine on whatever notes you provide.
             </p>
           )}
 

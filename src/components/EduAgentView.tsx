@@ -427,6 +427,19 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
                         : "bg-[#091122]/95 border border-blue-500/25 text-slate-200 rounded-bl-none shadow-md"
                     }`}
                   >
+                    {/* DeepSeek Reasoning Chain-of-Thought (R1 Reasoner) */}
+                    {m.reasoningContent && (
+                      <div className="mb-3 p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-[11px] text-purple-200">
+                        <div className="flex items-center gap-1.5 font-bold text-purple-300 mb-1.5 text-xs">
+                          <Brain className="w-3.5 h-3.5 text-purple-400" />
+                          <span>DeepSeek Chain-of-Thought Reasoning:</span>
+                        </div>
+                        <div className="whitespace-pre-line font-mono text-[10px] text-purple-200/90 max-h-48 overflow-y-auto pl-2 border-l-2 border-purple-400/40 leading-relaxed">
+                          {m.reasoningContent}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="whitespace-pre-line font-sans">{m.content}</div>
 
                     {/* Web Sources Chips if used */}

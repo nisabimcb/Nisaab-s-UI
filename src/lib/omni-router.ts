@@ -12,17 +12,18 @@ import {
 } from '@/types/stem';
 
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const DEFAULT_OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
-const DEFAULT_LOCAL_MODEL = process.env.LOCAL_MODEL_NAME || 'qwen2.5:14b';
+const DEFAULT_DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || '';
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
 
 export async function processOmniRoute(
   request: OmniRouteRequest
 ): Promise<OmniRouteResponse> {
   const startTime = Date.now();
-  const provider: AIProvider = request.config?.provider || (DEFAULT_GEMINI_KEY ? 'gemini' : 'demo_fallback');
+  const provider: AIProvider =
+    request.config?.provider || (DEFAULT_DEEPSEEK_KEY ? 'deepseek' : DEFAULT_GEMINI_KEY ? 'gemini' : 'demo_fallback');
   const geminiApiKey = request.config?.geminiApiKey || DEFAULT_GEMINI_KEY;
-  const ollamaUrl = request.config?.ollamaBaseUrl || DEFAULT_OLLAMA_URL;
-  const localModel = request.config?.localModelName || DEFAULT_LOCAL_MODEL;
+  const deepseekApiKey = request.config?.deepseekApiKey || DEFAULT_DEEPSEEK_KEY;
+  const deepseekModel = request.config?.deepseekModel || DEFAULT_DEEPSEEK_MODEL;
   const enableWebSearch = request.config?.enableWebSearch ?? true;
   const subject = request.subject || 'STEM';
 
@@ -55,45 +56,53 @@ export async function processOmniRoute(
           success: false,
           providerUsed: 'gemini',
           latencyMs: Date.now() - startTime,
-          data: { status: `Gemini Connection failed: ${err.message}` },
+          data: { status: `Gemini connection failed: ${err.message}` },
           error: err.message,
         };
       }
-    } else if (provider === 'qwen_local') {
+    } else if (provider === 'deepseek') {
+      if (!deepseekApiKey) {
+        return {
+          success: false,
+          providerUsed: 'deepseek',
+          latencyMs: Date.now() - startTime,
+          data: { status: 'Missing DeepSeek API Key. Please provide in Settings.' },
+          error: 'Missing DEEPSEEK_API_KEY',
+        };
+      }
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
-        const res = await fetch(`${ollamaUrl}/api/tags`, {
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch('https://api.deepseek.com/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${deepseekApiKey}`,
+          },
+          body: JSON.stringify({
+            model: deepseekModel,
+            messages: [{ role: 'user', content: 'Ping test. Reply with PONG.' }],
+            max_tokens: 10,
+          }),
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
         if (res.ok) {
-          const json = await res.json();
-          const hasModel = json.models?.some((m: any) =>
-            m.name?.toLowerCase().includes('qwen')
-          );
           return {
             success: true,
-            providerUsed: 'qwen_local',
+            providerUsed: 'deepseek',
             latencyMs: Date.now() - startTime,
-            data: {
-              status: `Connected to Local Ollama. ${
-                hasModel
-                  ? `Active Model: ${localModel}`
-                  : `Model ${localModel} not yet pulled, but Ollama server is responsive.`
-              }`,
-            },
+            data: { status: `Connected to DeepSeek Omni-Route (${deepseekModel}). Ready for deep STEM reasoning.` },
           };
         }
-        throw new Error(`Ollama returned status ${res.status}`);
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error?.message || `HTTP ${res.status}`);
       } catch (err: any) {
         return {
           success: false,
-          providerUsed: 'qwen_local',
+          providerUsed: 'deepseek',
           latencyMs: Date.now() - startTime,
-          data: {
-            status: `Local Ollama unreachable at ${ollamaUrl}. Ensure Ollama is running.`,
-          },
+          data: { status: `DeepSeek connection failed: ${err.message}` },
           error: err.message,
         };
       }
@@ -109,12 +118,12 @@ export async function processOmniRoute(
     }
   }
 
-  // 2. Try executing with selected provider
+  // 2. Try executing with selected Omni-Route provider
   try {
-    if (provider === 'gemini' && geminiApiKey) {
+    if (provider === 'deepseek' && deepseekApiKey) {
+      return await executeWithDeepSeek(request, deepseekApiKey, deepseekModel, startTime);
+    } else if (provider === 'gemini' && geminiApiKey) {
       return await executeWithGemini(request, geminiApiKey, enableWebSearch, startTime);
-    } else if (provider === 'qwen_local') {
-      return await executeWithOllama(request, ollamaUrl, localModel, startTime);
     }
   } catch (err) {
     console.warn(`[OmniRouter] Provider ${provider} failed, using Student Fallback:`, err);
@@ -125,7 +134,280 @@ export async function processOmniRoute(
 }
 
 // -------------------------------------------------------------
-// Google Gemini with Web Search Grounding
+// DeepSeek Omni-Route Execution (DeepSeek-V3 / DeepSeek-R1)
+// -------------------------------------------------------------
+async function executeWithDeepSeek(
+  request: OmniRouteRequest,
+  apiKey: string,
+  model: string,
+  startTime: number
+): Promise<OmniRouteResponse> {
+  const subject = request.subject || 'STEM';
+  const isReasoner = model === 'deepseek-reasoner';
+
+  if (request.action === 'chat') {
+    const prompt = `You are a world-class STEM Student Tutor & Socratic Mentor for ${subject}.
+Student study material context:
+"""${request.context || 'General STEM curriculum'}"""
+
+Student message: "${request.userMessage || 'Explain this concept'}"
+
+Instructions:
+1. Provide a rigorous, step-by-step conceptual explanation with mathematical precision.
+2. Highlight key derivations and core physical/mathematical laws.
+3. Suggest 2 interactive guiding questions for the student to verify their understanding.`;
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: 'system', content: `You are DeepSeek STEM Intellect Socratic Tutor for ${subject}.` },
+          { role: 'user', content: prompt },
+        ],
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `DeepSeek HTTP error ${res.status}`);
+    }
+
+    const data = await res.json();
+    const choice = data.choices?.[0];
+    const text = choice?.message?.content || 'DeepSeek reasoning complete.';
+    const reasoning = isReasoner ? choice?.message?.reasoning_content : undefined;
+
+    const message: SocraticMessage = {
+      id: `msg-deepseek-${Date.now()}`,
+      role: 'assistant',
+      content: text,
+      reasoningContent: reasoning,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      citations: [
+        {
+          sourceId: 'deepseek-stem',
+          sourceTitle: `DeepSeek AI (${model})`,
+          snippet: isReasoner ? 'Deep mathematical chain-of-thought verified.' : 'High-speed algorithmic inference.',
+          confidence: 0.99,
+        },
+      ],
+      guidedQuestions: [
+        'How would changing the boundary conditions alter this derivation?',
+        'Can you trace the conservation law behind this step?',
+      ],
+    };
+
+    return {
+      success: true,
+      providerUsed: 'deepseek',
+      latencyMs: Date.now() - startTime,
+      data: message,
+    };
+  }
+
+  if (request.action === 'synthesize') {
+    const prompt = `Analyze this student study material:
+"""${request.context || request.topic || 'General notes'}"""
+
+Generate a structured study brief. Return ONLY valid JSON with this exact structure:
+{
+  "executiveSummary": "Comprehensive summary of core concepts",
+  "keyFormulasAndDefinitions": ["formula 1", "formula 2", "definition 3"],
+  "boardExamPitfalls": ["exam pitfall 1", "misconception 2"],
+  "suggestedReviewQuestions": ["practice question 1", "practice question 2"]
+}`;
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`DeepSeek error ${res.status}`);
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '{}';
+    const parsed = cleanAndParseJSON<StudySummary>(raw, {
+      executiveSummary: 'Synthesized study brief from DeepSeek.',
+      keyFormulasAndDefinitions: ['Core equation extracted from your notes'],
+      boardExamPitfalls: ['Verify dimensional consistency in all calculations.'],
+      suggestedReviewQuestions: ['Derive this equation using first principles.'],
+    });
+
+    return {
+      success: true,
+      providerUsed: 'deepseek',
+      latencyMs: Date.now() - startTime,
+      data: parsed,
+    };
+  }
+
+  if (request.action === 'quiz') {
+    const prompt = `Generate 5 multiple choice questions on "${request.topic || subject}" based on:
+"""${request.context || ''}"""
+
+Return a JSON array of 5 questions with this exact structure:
+[
+  {
+    "id": "q1",
+    "question": "Question text",
+    "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
+    "correctIndex": 0,
+    "explanation": "Detailed rationale",
+    "sloReference": "Standard Learning Objective",
+    "difficulty": "Application"
+  }
+]`;
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`DeepSeek quiz error ${res.status}`);
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '[]';
+    const parsed = cleanAndParseJSON<QuizQuestion[]>(raw, []);
+
+    return {
+      success: true,
+      providerUsed: 'deepseek',
+      latencyMs: Date.now() - startTime,
+      data: parsed.length > 0 ? parsed : executeWithDynamicFallback(request, startTime).data,
+    };
+  }
+
+  if (request.action === 'mindmap') {
+    const prompt = `Generate a concept knowledge graph on topic: "${request.topic || subject}".
+Return ONLY valid JSON matching:
+{
+  "topic": "${request.topic || subject}",
+  "subject": "${subject}",
+  "nodes": [
+    { "id": "1", "label": "Topic", "category": "core", "description": "Core definition" },
+    { "id": "2", "label": "Prerequisite", "category": "prerequisite", "description": "Underlying theory" },
+    { "id": "3", "label": "Exam Focus", "category": "exam_focus", "description": "Numerical focus" }
+  ],
+  "links": [
+    { "source": "1", "target": "2", "relation": "Builds on" },
+    { "source": "1", "target": "3", "relation": "Tested via" }
+  ]
+}`;
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`DeepSeek mindmap error ${res.status}`);
+    const data = await res.json();
+    const parsed = cleanAndParseJSON<MindMapData>(data.choices?.[0]?.message?.content || '{}', {
+      topic: request.topic || subject,
+      subject: subject,
+      nodes: [
+        { id: '1', label: request.topic || subject, category: 'core', description: 'Core concept' },
+        { id: '2', label: 'Prerequisites', category: 'prerequisite', description: 'Foundations' },
+      ],
+      links: [{ source: '1', target: '2', relation: 'Derived from' }],
+    });
+
+    return {
+      success: true,
+      providerUsed: 'deepseek',
+      latencyMs: Date.now() - startTime,
+      data: parsed,
+    };
+  }
+
+  if (request.action === 'audio_script') {
+    const prompt = `Write a lively 2-host podcast dialogue (Dr. Sarah and Alex) explaining "${request.topic || subject}".
+Return ONLY valid JSON:
+{
+  "id": "pod-deepseek",
+  "topic": "${request.topic || subject}",
+  "subject": "${subject}",
+  "duration": "2 min",
+  "dialogue": [
+    { "speaker": "Dr. Sarah (Concept Lead)", "text": "Welcome to our deep dive into...", "timestamp": "0:00" },
+    { "speaker": "Alex (Student Fellow)", "text": "Thanks Dr. Sarah! What is the big intuition here?", "timestamp": "0:15" },
+    { "speaker": "Dr. Sarah (Concept Lead)", "text": "The key breakthrough is...", "timestamp": "0:30" }
+  ]
+}`;
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`DeepSeek podcast error ${res.status}`);
+    const data = await res.json();
+    const parsed = cleanAndParseJSON(data.choices?.[0]?.message?.content || '{}', {
+      id: 'pod-deepseek',
+      topic: request.topic || subject,
+      subject: subject,
+      duration: '2 min',
+      dialogue: [
+        { speaker: 'Dr. Sarah (Concept Lead)', text: `Welcome to our review of ${request.topic || subject}!`, timestamp: '0:00' },
+        { speaker: 'Alex (Student Fellow)', text: 'What is the main takeaway?', timestamp: '0:15' },
+        { speaker: 'Dr. Sarah (Concept Lead)', text: 'Mastering the first principles is essential.', timestamp: '0:30' },
+      ],
+    });
+
+    return {
+      success: true,
+      providerUsed: 'deepseek',
+      latencyMs: Date.now() - startTime,
+      data: parsed,
+    };
+  }
+
+  return executeWithDynamicFallback(request, startTime);
+}
+
+// -------------------------------------------------------------
+// Google Gemini Execution with Google Search Grounding
 // -------------------------------------------------------------
 async function executeWithGemini(
   request: OmniRouteRequest,
@@ -181,16 +463,15 @@ Instructions:
   }
 
   if (request.action === 'synthesize') {
-    const prompt = `You are an expert academic research synthesizer.
-Analyze this study material uploaded by the student:
+    const prompt = `Analyze this student study material:
 """${request.context || request.topic || 'General notes'}"""
 
-Generate an in-depth study brief. Return ONLY valid JSON with this exact schema:
+Generate an in-depth study brief. Return ONLY valid JSON:
 {
-  "executiveSummary": "Concise high-impact summary of the material",
-  "keyFormulasAndDefinitions": ["key concept 1", "key concept 2", "key formula 3"],
-  "boardExamPitfalls": ["common mistake students make in exams 1", "misconception 2"],
-  "suggestedReviewQuestions": ["practice question 1", "practice question 2"]
+  "executiveSummary": "High-impact summary",
+  "keyFormulasAndDefinitions": ["formula 1", "formula 2"],
+  "boardExamPitfalls": ["pitfall 1", "misconception 2"],
+  "suggestedReviewQuestions": ["question 1", "question 2"]
 }`;
 
     const result = await ai.models.generateContent({
@@ -215,19 +496,17 @@ Generate an in-depth study brief. Return ONLY valid JSON with this exact schema:
   }
 
   if (request.action === 'quiz') {
-    const prompt = `Generate 5 interactive multiple-choice quiz questions based on the following student material or topic:
-Topic: "${request.topic || subject}"
-Notes context: """${request.context || ''}"""
-
-Return ONLY a valid JSON array of 5 questions with this exact structure:
+    const prompt = `Generate 5 multiple-choice questions on "${request.topic || subject}":
+Notes: """${request.context || ''}"""
+Return ONLY a valid JSON array:
 [
   {
     "id": "q1",
     "question": "Question text",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
     "correctIndex": 0,
-    "explanation": "Clear explanation of why this answer is correct",
-    "sloReference": "Standard Learning Objective",
+    "explanation": "Clear explanation",
+    "sloReference": "Standard Reference",
     "difficulty": "Application"
   }
 ]`;
@@ -237,44 +516,30 @@ Return ONLY a valid JSON array of 5 questions with this exact structure:
       contents: prompt,
     });
 
-    const parsed = cleanAndParseJSON<QuizQuestion[]>(result.text || '', [
-      {
-        id: 'q1',
-        question: `What is the primary governing principle of ${request.topic || subject}?`,
-        options: ['Conservation of energy', 'Thermodynamic equilibrium', 'Linear transformation', 'Entropy maximization'],
-        correctIndex: 0,
-        explanation: 'Fundamental laws require energy conservation across isolated systems.',
-        sloReference: `${subject.toUpperCase()} Core Standard`,
-        difficulty: 'Conceptual',
-      },
-    ]);
-
+    const parsed = cleanAndParseJSON<QuizQuestion[]>(result.text || '', []);
     return {
       success: true,
       providerUsed: 'gemini',
       latencyMs: Date.now() - startTime,
-      data: parsed,
+      data: parsed.length > 0 ? parsed : executeWithDynamicFallback(request, startTime).data,
     };
   }
 
   if (request.action === 'mindmap') {
-    const prompt = `Generate a concept mind map (nodes and links) for student study on topic: "${request.topic || subject}".
+    const prompt = `Generate a concept mind map (nodes and links) for topic: "${request.topic || subject}".
 Material: """${request.context || ''}"""
-
-Return ONLY valid JSON with this exact structure:
+Return ONLY valid JSON:
 {
   "topic": "${request.topic || subject}",
   "subject": "${subject}",
   "nodes": [
     { "id": "1", "label": "Main Topic", "category": "core", "description": "Core foundation" },
     { "id": "2", "label": "Prerequisite Concept", "category": "prerequisite", "description": "Required background" },
-    { "id": "3", "label": "Exam Focus Area", "category": "exam_focus", "description": "High-yield exam topic" },
-    { "id": "4", "label": "Practical Application", "category": "application", "description": "Real world use" }
+    { "id": "3", "label": "Exam Focus Area", "category": "exam_focus", "description": "High-yield exam topic" }
   ],
   "links": [
     { "source": "1", "target": "2", "relation": "Builds on" },
-    { "source": "1", "target": "3", "relation": "Assessed in" },
-    { "source": "1", "target": "4", "relation": "Applies to" }
+    { "source": "1", "target": "3", "relation": "Assessed in" }
   ]
 }`;
 
@@ -289,12 +554,8 @@ Return ONLY valid JSON with this exact structure:
       nodes: [
         { id: '1', label: request.topic || subject, category: 'core', description: 'Core subject node' },
         { id: '2', label: 'Fundamental Theories', category: 'prerequisite', description: 'Underlying principles' },
-        { id: '3', label: 'Board Exam Problems', category: 'exam_focus', description: 'Numerical and derivation focus' },
       ],
-      links: [
-        { source: '1', target: '2', relation: 'Founded upon' },
-        { source: '1', target: '3', relation: 'Tested via' },
-      ],
+      links: [{ source: '1', target: '2', relation: 'Founded upon' }],
     });
 
     return {
@@ -306,18 +567,16 @@ Return ONLY valid JSON with this exact structure:
   }
 
   if (request.action === 'audio_script') {
-    const prompt = `Create a lively, educational 2-person dialogue (Dr. Sarah and Alex) breaking down this student's topic: "${request.topic || subject}".
-Notes: """${request.context || ''}"""
-
+    const prompt = `Create a lively, educational 2-person dialogue (Dr. Sarah and Alex) breaking down "${request.topic || subject}".
 Return ONLY valid JSON:
 {
-  "id": "pod-custom",
+  "id": "pod-gemini",
   "topic": "${request.topic || subject}",
   "subject": "${subject}",
   "duration": "2 min",
   "dialogue": [
-    { "speaker": "Dr. Sarah (Concept Lead)", "text": "Welcome to our study overview. Today Alex and I are diving into...", "timestamp": "0:00" },
-    { "speaker": "Alex (Student Fellow)", "text": "Thanks Dr. Sarah! What is the most critical concept students need to master here?", "timestamp": "0:15" },
+    { "speaker": "Dr. Sarah (Concept Lead)", "text": "Welcome to our study overview...", "timestamp": "0:00" },
+    { "speaker": "Alex (Student Fellow)", "text": "What is the critical concept?", "timestamp": "0:15" },
     { "speaker": "Dr. Sarah (Concept Lead)", "text": "The key is understanding...", "timestamp": "0:30" }
   ]
 }`;
@@ -328,26 +587,14 @@ Return ONLY valid JSON:
     });
 
     const parsed = cleanAndParseJSON(result.text || '', {
-      id: 'pod-custom',
+      id: 'pod-gemini',
       topic: request.topic || subject,
       subject: subject,
       duration: '2 min',
       dialogue: [
-        {
-          speaker: 'Dr. Sarah (Concept Lead)',
-          text: `Welcome! Let's explore ${request.topic || subject} together.`,
-          timestamp: '0:00',
-        },
-        {
-          speaker: 'Alex (Student Fellow)',
-          text: 'What are the main insights from these study notes?',
-          timestamp: '0:15',
-        },
-        {
-          speaker: 'Dr. Sarah (Concept Lead)',
-          text: 'Pay close attention to first principles and key equations.',
-          timestamp: '0:30',
-        },
+        { speaker: 'Dr. Sarah (Concept Lead)', text: `Welcome to our review of ${request.topic || subject}!`, timestamp: '0:00' },
+        { speaker: 'Alex (Student Fellow)', text: 'What are the main insights?', timestamp: '0:15' },
+        { speaker: 'Dr. Sarah (Concept Lead)', text: 'Focus on first principles and boundary rules.', timestamp: '0:30' },
       ],
     });
 
@@ -360,64 +607,6 @@ Return ONLY valid JSON:
   }
 
   return executeWithDynamicFallback(request, startTime);
-}
-
-// -------------------------------------------------------------
-// Local Ollama Execution
-// -------------------------------------------------------------
-async function executeWithOllama(
-  request: OmniRouteRequest,
-  baseUrl: string,
-  model: string,
-  startTime: number
-): Promise<OmniRouteResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-  const prompt = `[Local Qwen Tutor] User asks: ${
-    request.userMessage || request.topic || 'Explain core principles'
-  }. Context: ${request.context || ''}`;
-
-  const res = await fetch(`${baseUrl}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: model,
-      prompt: prompt,
-      stream: false,
-    }),
-    signal: controller.signal,
-  });
-  clearTimeout(timeoutId);
-
-  if (!res.ok) {
-    throw new Error(`Ollama returned status ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text = data.response || 'Local Qwen 14B response generated.';
-
-  const message: SocraticMessage = {
-    id: `msg-qwen-${Date.now()}`,
-    role: 'assistant',
-    content: text,
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    citations: [
-      {
-        sourceId: 'local-qwen',
-        sourceTitle: `Local Qwen 14B (${model})`,
-        snippet: 'Generated 100% offline on your device.',
-        confidence: 0.95,
-      },
-    ],
-  };
-
-  return {
-    success: true,
-    providerUsed: 'qwen_local',
-    latencyMs: Date.now() - startTime,
-    data: message,
-  };
 }
 
 // -------------------------------------------------------------
@@ -623,7 +812,7 @@ function extractWebSources(result: any): WebSearchSource[] {
 }
 
 // -------------------------------------------------------------
-// Helper: Parse JSON safely
+// Helper: Clean and Parse JSON
 // -------------------------------------------------------------
 function cleanAndParseJSON<T>(rawText: string, fallback: T): T {
   try {

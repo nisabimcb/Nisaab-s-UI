@@ -16,8 +16,8 @@ export default function Home() {
   const [omniConfig, setOmniConfig] = useState<OmniRouteConfig>({
     provider: "gemini",
     geminiApiKey: "",
-    ollamaBaseUrl: "http://127.0.0.1:11434",
-    localModelName: "qwen2.5:14b",
+    deepseekApiKey: "",
+    deepseekModel: "deepseek-chat",
     enableWebSearch: true,
   });
 
