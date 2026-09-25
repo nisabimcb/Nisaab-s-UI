@@ -135,7 +135,7 @@ export interface Flashcard {
   status: 'new' | 'learning' | 'mastered';
 }
 
-export type AIProvider = 'omniroute' | 'gemini' | 'deepseek' | 'demo_fallback';
+export type AIProvider = 'omniroute' | 'gemini' | 'deepseek' | 'dual_model' | 'demo_fallback';
 
 export interface OmniRouteConfig {
   provider: AIProvider;

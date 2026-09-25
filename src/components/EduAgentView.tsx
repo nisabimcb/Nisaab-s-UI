@@ -28,6 +28,7 @@ import {
   OmniRouteConfig,
   Flashcard,
 } from "@/types/stem";
+import { detectSubjectFromQuery } from "@/lib/omni-router";
 
 interface EduAgentViewProps {
   omniConfig?: Partial<OmniRouteConfig>;
@@ -36,7 +37,7 @@ interface EduAgentViewProps {
 
 export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewProps) {
   const [activeTab, setActiveTab] = useState<"tutor" | "quiz" | "weakspots" | "mindmap">("tutor");
-  const [customSubject, setCustomSubject] = useState("Physics");
+  const [customSubject, setCustomSubject] = useState("General STEM");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
 
   // --- Socratic Tutor Messages ---
@@ -45,12 +46,12 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       id: "init-1",
       role: "assistant",
       content:
-        "Welcome! I am your Socratic AI STEM Tutor & App Controller.\n\nI can answer questions, guide derivations, or directly control your workspace:\n• Ask me: \"Make 5 flashcards on Carnot cycle\"\n• Ask me: \"Generate a quiz on thermodynamics\"\n• Ask me: \"Create a mind map on electromagnetic induction\"\n• Ask any out-of-the-box STEM question (Google Gemini will search the live web automatically).",
+        "Welcome! I am your Socratic AI STEM Tutor & App Controller.\n\nCooperative Dual-Model Pipeline is Active:\n• Google Gemini: Researches & Generates factual groundings via live Google Search.\n• OmniRoute Gateway: Executes structured quizzes, flashcards, and app workflows.\n\nAsk me about any STEM subject:\n• \"Make 5 flashcards on Binary Search algorithms\"\n• \"Generate a quiz on Photosynthesis in Biology\"\n• \"Balance redox reactions in Chemistry\"\n• \"Explain Carnot heat engine efficiency in Physics\"\n• Or ask any live question from the web!",
       timestamp: "Ready",
       guidedQuestions: [
-        "Make 5 flashcards on Carnot cycle",
-        "Generate a quiz on thermodynamics",
-        "Explain Carnot efficiency from first principles",
+        "Make 5 flashcards on Binary Search",
+        "Generate a quiz on Photosynthesis",
+        "Explain Carnot cycle efficiency",
       ],
     },
   ]);
@@ -212,6 +213,8 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
     setIsChatting(true);
 
     const lower = rawText.toLowerCase();
+    const detectedSub = detectSubjectFromQuery(rawText, customSubject);
+    setCustomSubject(detectedSub);
 
     // 0. Direct Workspace Navigation & Control Commands
     if (lower === "open flashcards" || lower === "go to flashcards" || lower === "flashcards studio" || lower === "/flashcards") {
@@ -258,7 +261,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       const msg: SocraticMessage = {
         id: `asst-${Date.now()}`,
         role: "assistant",
-        content: "Switched to Practice Quiz mode! Select your answers for each question and submit for instant diagnostic scoring.",
+        content: `Switched to Practice Quiz mode for ${detectedSub}! Select your answers for each question and submit for instant diagnostic scoring.`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, msg]);
@@ -271,7 +274,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       const msg: SocraticMessage = {
         id: `asst-${Date.now()}`,
         role: "assistant",
-        content: "Switched to Mind Map view! You can explore the interconnected concept graph.",
+        content: `Switched to Mind Map view for ${detectedSub}! You can explore the interconnected concept graph.`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, msg]);
@@ -285,11 +288,11 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
           id: `init-${Date.now()}`,
           role: "assistant",
           content:
-            "Chat session refreshed. I am your Socratic AI STEM Tutor & App Controller.\n\nAsk me to:\n• \"Make 5 flashcards on ...\"\n• \"Generate a quiz on ...\"\n• \"Create a mind map on ...\"\n• Or ask any out-of-the-box STEM question (Google Gemini will search the live web automatically).",
+            "Chat session refreshed. I am your Socratic AI STEM Tutor & App Controller.\n\nAsk me to:\n• \"Make 5 flashcards on ...\"\n• \"Generate a quiz on ...\"\n• \"Create a mind map on ...\"\n• Or ask any STEM question across Biology, Chemistry, Computer Science, Math, or Physics!",
           timestamp: "Ready",
           guidedQuestions: [
-            "Make 5 flashcards on Carnot cycle",
-            "Generate a quiz on thermodynamics",
+            "Make 5 flashcards on Binary Search",
+            "Generate a quiz on Photosynthesis",
             "Check my weak spots",
           ],
         },
@@ -327,7 +330,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       const summaryList = weakSpots
         .map(
           (ws, i) =>
-            `${i + 1}. **${ws.topic}** (Mastery: ${ws.masteryPercentage}%)\n` +
+            `${i + 1}. **${ws.topic}** (${ws.subject} - Mastery: ${ws.masteryPercentage}%)\n` +
             `   • Status: ${ws.status.toUpperCase()}\n` +
             `   • Remediation: ${ws.prescribedRemediation[0] || "Review core concept"}`
         )
@@ -383,7 +386,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "flashcards",
-            subject: customSubject,
+            subject: detectedSub,
             topic,
             config: omniConfig,
           }),
@@ -398,13 +401,13 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
         const assistantMsg: SocraticMessage = {
           id: `asst-${Date.now()}`,
           role: "assistant",
-          content: `I've generated ${flashcards.length || 5} study flashcards for "${topic}" using OmniRoute models and saved them to your deck. You can review them below or open the full Flashcards Studio.`,
+          content: `I've generated ${flashcards.length || 5} study flashcards for "${topic}" in **${detectedSub}** using the Cooperative Dual-Model Engine and saved them to your deck.`,
           actionType: "flashcards",
           flashcardsPayload: flashcards,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           guidedQuestions: [
             `Generate a quiz on ${topic}`,
-            `Explain the primary derivation of ${topic}`,
+            `Explain the primary mechanism of ${topic}`,
           ],
         };
         setMessages((prev) => [...prev, assistantMsg]);
@@ -420,7 +423,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "quiz",
-            subject: customSubject,
+            subject: detectedSub,
             topic,
             config: omniConfig,
           }),
@@ -436,7 +439,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
         const assistantMsg: SocraticMessage = {
           id: `asst-${Date.now()}`,
           role: "assistant",
-          content: `I've generated a 5-question practice quiz on "${topic}" using OmniRoute models. Test your knowledge below or switch to Practice Quiz Mode for a full diagnostic assessment.`,
+          content: `I've generated a 5-question practice quiz on "${topic}" in **${detectedSub}** using the Cooperative Dual-Model Engine. Test your knowledge below or switch to Practice Quiz Mode for a full diagnostic assessment.`,
           actionType: "quiz",
           quizPayload: questions,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -458,7 +461,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "mindmap",
-            subject: customSubject,
+            subject: detectedSub,
             topic,
             config: omniConfig,
           }),
@@ -472,7 +475,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
         const assistantMsg: SocraticMessage = {
           id: `asst-${Date.now()}`,
           role: "assistant",
-          content: `Concept Knowledge Graph created for "${topic}" using OmniRoute. Found ${data.data?.nodes?.length || 4} interconnected concept nodes connecting prerequisites to board numericals.`,
+          content: `Concept Knowledge Graph created for "${topic}" in **${detectedSub}**. Found ${data.data?.nodes?.length || 4} interconnected concept nodes connecting prerequisites to practical applications.`,
           actionType: "mindmap",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           guidedQuestions: [
@@ -486,12 +489,12 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
 
       if (isNoteIntent) {
         const noteContent = rawText.replace(/^(?:add|save|create)\s*(?:a\s*)?(?:study\s*)?note(?::|\s+about|\s+on)?/i, "").trim();
-        saveNoteToNotebook("Tutor Study Note", noteContent || rawText);
+        saveNoteToNotebook(`${detectedSub} Study Note`, noteContent || rawText);
 
         const assistantMsg: SocraticMessage = {
           id: `asst-${Date.now()}`,
           role: "assistant",
-          content: `✓ Saved study note to your personal notebook studio: "${noteContent.slice(0, 60)}..."`,
+          content: `✓ Saved ${detectedSub} study note to your personal notebook studio: "${noteContent.slice(0, 60)}..."`,
           actionType: "note_created",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         };
@@ -499,35 +502,34 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
         return;
       }
 
-      // 6. Socratic Chat & Out-of-the-Box Inquiries (Auto-Routed to Gemini with Google Search Grounding)
+      // 6. Socratic Chat & Inquiries (Only attach noteContext if query matches note keywords - NEVER fallback to docs[0]!)
       let noteContext = "";
       try {
         const saved = localStorage.getItem("student_notebook_docs");
         if (saved) {
           const docs = JSON.parse(saved);
           if (Array.isArray(docs) && docs.length > 0) {
-            const matching =
-              docs.find(
-                (d: any) =>
-                  rawText.toLowerCase().includes(d.title?.toLowerCase() || "") ||
-                  d.subject?.toLowerCase() === customSubject.toLowerCase()
-              ) || docs[0];
+            const matching = docs.find((d: any) => {
+              if (!d.title) return false;
+              const titleWords = d.title.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+              return titleWords.some((w: string) => lower.includes(w)) || (d.chapter && lower.includes(d.chapter.toLowerCase()));
+            });
             if (matching) {
-              noteContext = `Note Title: ${matching.title}\nChapter: ${matching.chapter || "Study Material"}\nContent:\n${matching.content}`;
+              noteContext = `Note Title: ${matching.title}\nSubject: ${matching.subject}\nChapter: ${matching.chapter || "Study Material"}\nContent:\n${matching.content}`;
             }
           }
         }
       } catch {}
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const res = await fetch("/api/ai/omni-route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "chat",
-          subject: customSubject,
+          subject: detectedSub,
           userMessage: rawText,
           context: noteContext,
           config: {
@@ -550,10 +552,10 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       const fallbackMsg: SocraticMessage = {
         id: `assistant-local-${Date.now()}`,
         role: "assistant",
-        content: `Regarding "${rawText}":\n\n1. **Core Concept**: Break the problem down into fundamental physical principles and governing equations.\n2. **Mathematical Formulation**: State boundary conditions and verify standard SI units.\n3. **Application**: Check sign conventions and common board exam pitfalls.\n\nWould you like me to make flashcards or a quiz on this topic?`,
+        content: `Regarding "${rawText}" in **${detectedSub}**:\n\n1. **Core Concept**: Deconstruct the problem into foundational ${detectedSub} principles.\n2. **Analysis**: Check key mechanisms, formulas, and operational definitions.\n3. **Application**: Verify boundary conditions and avoid common examination pitfalls.\n\nWould you like me to make flashcards or a quiz on this topic?`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         guidedQuestions: [
-          `Make flashcards on this topic`,
+          `Make 5 flashcards on this topic`,
           `Generate a quiz on this topic`,
         ],
       };
@@ -713,11 +715,16 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
         {activeTab === "tutor" && (
           <div className="max-w-3xl mx-auto flex flex-col h-full bg-[#111622] rounded-xl border border-slate-800 overflow-hidden shadow-sm">
             <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span className="font-medium text-slate-300">
-                AI Tutor &amp; Workspace Controller
-              </span>
-              <span className="text-[11px] text-slate-500">
-                OmniRoute: Quizzes &amp; Flashcards • Gemini: Live Search
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-slate-300">
+                  AI Tutor &amp; Workspace Controller
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  {customSubject}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 hidden sm:inline">
+                Dual-Model: Gemini (Generator &amp; Search) + OmniRoute (Executor)
               </span>
             </div>
 
@@ -1003,31 +1010,38 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
               <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Make 5 flashcards on Carnot cycle")}
+                  onClick={() => handleSendMessage("Make 5 flashcards on Binary Search algorithms")}
                   className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
                 >
-                  ⚡ Make Flashcards
+                  ⚡ CS Flashcards
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Generate a quiz on thermodynamics")}
+                  onClick={() => handleSendMessage("Generate a quiz on Photosynthesis light reactions")}
                   className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
                 >
-                  📝 Generate Quiz
+                  📝 Bio Quiz
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Create a mind map on electromagnetic induction")}
+                  onClick={() => handleSendMessage("Create a mind map on Chemical Equilibrium")}
                   className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
                 >
-                  🧠 Mind Map
+                  🧠 Chem Mind Map
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("What are the latest cryogenic heat engine breakthroughs?")}
+                  onClick={() => handleSendMessage("Explain Carnot cycle efficiency from first principles")}
                   className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
                 >
-                  🌐 Web Search
+                  ⚙️ Physics Carnot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("What are the latest breakthroughs in CRISPR gene editing?")}
+                  className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
+                >
+                  🌐 Live Web Search
                 </button>
               </div>
 

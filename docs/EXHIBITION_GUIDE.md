@@ -83,3 +83,19 @@
    - By default, it runs on `http://localhost:20128/v1`.
 3. **If Venue Wi-Fi Drops**:
    - The app's built-in **Local Engine** operates automatically if external network calls fail, ensuring **zero crashes or frozen screens** in front of judges!
+
+---
+
+## 5. Cooperative Dual-Model Engine (Generator + Executor)
+
+The platform implements an advanced **Dual-Model Cooperative Pipeline**:
+
+| Role | AI Model | Function |
+| :--- | :--- | :--- |
+| **Generator / Researcher** | **Google Gemini 2.5 Flash** | Live Google Search Grounding, factual research, concept deconstruction, and curriculum synthesis. |
+| **Application Executor** | **OmniRoute Gateway (DeepSeek)** | Converts researched briefings into strict JSON schemas for 5-question quizzes, 6-card flashcard decks, knowledge graphs, and interactive Socratic derivations. |
+
+### Dynamic Multi-Subject Intelligence:
+- **Zero Hardcoding**: Queries are automatically classified across **Biology**, **Chemistry**, **Computer Science**, **Mathematics**, **Physics**, and **General STEM**.
+- **Context-Aware Note Retrieval**: Uploaded notebook context is only injected when the student's query genuinely matches keywords from the note, eliminating unintended cross-subject pollution.
+
