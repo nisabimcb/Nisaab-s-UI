@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Users, BookOpen, Settings } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, Settings, BookMarked, Bot } from "lucide-react";
 
 interface SidebarProps {
   currentView: string;
@@ -42,6 +42,8 @@ export default function Sidebar({
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "notebook", label: "Open Notebook", icon: BookMarked, badge: "STEM" },
+    { id: "tutor", label: "Edu-Agent Tutor", icon: Bot, badge: "AI" },
     { id: "students", label: "Students", icon: Users, count: studentCount },
     { id: "courses", label: "Courses", icon: BookOpen },
     { id: "settings", label: "Settings", icon: Settings },
@@ -71,6 +73,11 @@ export default function Sidebar({
               {item.count !== undefined && (
                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300">
                   {item.count}
+                </span>
+              )}
+              {item.badge && (
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                  {item.badge}
                 </span>
               )}
               {isActive && (

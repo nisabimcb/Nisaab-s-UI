@@ -9,8 +9,11 @@ import DashboardView from "@/components/DashboardView";
 import StudentsView from "@/components/StudentsView";
 import CoursesView from "@/components/CoursesView";
 import SettingsView from "@/components/SettingsView";
+import OpenNotebookView from "@/components/OpenNotebookView";
+import EduAgentView from "@/components/EduAgentView";
 import ToastContainer from "@/components/ToastContainer";
 import { Student, Course, UserProfile, ToastMessage } from "@/types/student";
+import { OmniRouteConfig } from "@/types/stem";
 
 const DEFAULT_STUDENTS: Student[] = [
   {
@@ -113,6 +116,12 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<string>("dashboard");
   const [globalSearch, setGlobalSearch] = useState<string>("");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [omniConfig, setOmniConfig] = useState<OmniRouteConfig>({
+    provider: "demo_fallback",
+    geminiApiKey: "",
+    ollamaBaseUrl: "http://127.0.0.1:11434",
+    localModelName: "qwen2.5:14b",
+  });
 
   const showToast = useCallback(
     (message: string, type: "success" | "danger" | "info" = "success") => {
@@ -140,12 +149,20 @@ export default function Home() {
       if (savedStudents) {
         setStudents(JSON.parse(savedStudents));
       }
+      const savedOmni = localStorage.getItem("sm_omni_config");
+      if (savedOmni) {
+        setOmniConfig(JSON.parse(savedOmni));
+      }
       if (typeof window !== "undefined") {
         if (
           window.location.search.includes("view=students") ||
           window.location.hash.includes("students")
         ) {
           setCurrentView("students");
+        } else if (window.location.search.includes("view=notebook")) {
+          setCurrentView("notebook");
+        } else if (window.location.search.includes("view=tutor")) {
+          setCurrentView("tutor");
         }
       }
     } catch {
@@ -239,6 +256,7 @@ export default function Home() {
             onOpenAddStudent={() => setCurrentView("students")}
             onSearchChange={handleGlobalSearchChange}
             onOpenSettings={() => setCurrentView("settings")}
+            omniProvider={omniConfig.provider}
           />
 
           <div className="flex flex-1 overflow-hidden">
@@ -248,14 +266,29 @@ export default function Home() {
               studentCount={students.length}
             />
 
-            <main className="flex-1 overflow-y-auto p-6 md:p-8">
+            <main
+              className={`flex-1 overflow-y-auto ${
+                currentView === "notebook" || currentView === "tutor"
+                  ? "p-0 flex flex-col overflow-hidden"
+                  : "p-6 md:p-8"
+              }`}
+            >
               {currentView === "dashboard" && (
                 <DashboardView
                   students={students}
                   totalCourses={DEFAULT_COURSES.length}
                   onNavigateToStudents={() => setCurrentView("students")}
                   onRefresh={() => showToast("Dashboard metrics synchronized.", "info")}
+                  onNavigateView={setCurrentView}
                 />
+              )}
+
+              {currentView === "notebook" && (
+                <OpenNotebookView omniConfig={omniConfig} />
+              )}
+
+              {currentView === "tutor" && (
+                <EduAgentView omniConfig={omniConfig} />
               )}
 
               {currentView === "students" && (
@@ -279,6 +312,14 @@ export default function Home() {
                   onSavePreferences={() =>
                     showToast("Portal preferences saved successfully!", "success")
                   }
+                  omniConfig={omniConfig}
+                  onUpdateOmniConfig={(newConf) => {
+                    setOmniConfig(newConf);
+                    showToast(
+                      `AI Engine switched to ${newConf.provider.toUpperCase()}`,
+                      "success"
+                    );
+                  }}
                 />
               )}
             </main>

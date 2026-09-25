@@ -12,6 +12,7 @@ interface AppHeaderProps {
   onOpenAddStudent: () => void;
   onSearchChange: (query: string) => void;
   onOpenSettings: () => void;
+  omniProvider?: string;
 }
 
 export default function AppHeader({
@@ -22,6 +23,7 @@ export default function AppHeader({
   onOpenAddStudent,
   onSearchChange,
   onOpenSettings,
+  omniProvider,
 }: AppHeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchVal, setSearchVal] = useState("");
@@ -110,6 +112,19 @@ export default function AppHeader({
           <UserPlus className="w-3.5 h-3.5" />
           <span>Add Student</span>
         </button>
+
+        {/* Omni-Route AI Model Status Badge */}
+        {omniProvider && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-[11px] font-semibold text-cyan-300 transition-all cursor-pointer"
+            title="Click to configure AI Engine in Settings"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]" />
+            <span className="capitalize">{omniProvider.replace("_", " ")}</span>
+          </button>
+        )}
 
         {/* Online Status Pill */}
         <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] font-semibold text-emerald-400">

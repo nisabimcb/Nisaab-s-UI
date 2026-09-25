@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Users, BookOpen, Activity, Award, ArrowRight, RefreshCw } from "lucide-react";
+import { Users, BookOpen, Activity, Award, ArrowRight, RefreshCw, BookMarked, Bot, Sparkles } from "lucide-react";
 import { Student } from "@/types/student";
 
 interface DashboardViewProps {
@@ -9,6 +9,7 @@ interface DashboardViewProps {
   totalCourses: number;
   onNavigateToStudents: () => void;
   onRefresh: () => void;
+  onNavigateView?: (view: string) => void;
 }
 
 export default function DashboardView({
@@ -16,6 +17,7 @@ export default function DashboardView({
   totalCourses,
   onNavigateToStudents,
   onRefresh,
+  onNavigateView,
 }: DashboardViewProps) {
   function getInitials(name: string): string {
     const parts = name.trim().split(/\s+/);
@@ -103,6 +105,73 @@ export default function DashboardView({
             </span>
             <span className="text-[10px] font-semibold text-emerald-400">Above Target</span>
           </div>
+        </div>
+      </div>
+
+      {/* FBISE STEM Intellect Hub Spotlight Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Card 1: Open Notebook */}
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-[#0c1a36] to-[#070e1c] border border-cyan-500/30 shadow-lg flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                Open-Notebook Hub
+              </span>
+              <span className="text-[11px] text-cyan-400 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>RAG & Citations</span>
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white mb-1.5 flex items-center gap-2">
+              <BookMarked className="w-5 h-5 text-cyan-400" />
+              <span>Multi-Source STEM Research Hub</span>
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              Ground your study in FBISE textbooks (Physics, Chemistry, CS, Biology, Math). Generate executive study briefs, exam pitfall warnings, and two-speaker audio podcasts.
+            </p>
+          </div>
+          {onNavigateView && (
+            <button
+              type="button"
+              onClick={() => onNavigateView("notebook")}
+              className="inline-flex items-center justify-between w-full px-4 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-200 text-xs font-bold transition-all cursor-pointer"
+            >
+              <span>Launch Open-Notebook Workspace</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Card 2: Edu-Agent */}
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-[#180e2f] to-[#070e1c] border border-purple-500/30 shadow-lg flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30">
+                Edu-Agent Engine
+              </span>
+              <span className="text-[11px] text-purple-400 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>&lt;70% Mastery Rule</span>
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white mb-1.5 flex items-center gap-2">
+              <Bot className="w-5 h-5 text-purple-400" />
+              <span>Adaptive Socratic STEM Mentor</span>
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              Socratic AI tutor that guides without spoiling answers. Interactive SLO quiz engine with automatic weak-spot diagnostics and prerequisite concept knowledge graphs.
+            </p>
+          </div>
+          {onNavigateView && (
+            <button
+              type="button"
+              onClick={() => onNavigateView("tutor")}
+              className="inline-flex items-center justify-between w-full px-4 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-200 text-xs font-bold transition-all cursor-pointer"
+            >
+              <span>Launch Edu-Agent Socratic Tutor</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
