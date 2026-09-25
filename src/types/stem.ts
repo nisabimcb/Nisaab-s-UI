@@ -4,19 +4,19 @@ export interface StemSubjectInfo {
   id: StemSubject;
   name: string;
   code: string;
-  grade: 'HSSC-I' | 'HSSC-II';
+  grade?: string;
+  totalChapters?: number;
   icon: string;
   color: string;
-  totalChapters: number;
 }
 
 export interface NotebookDocument {
   id: string;
-  subject: StemSubject;
+  subject: string;
   title: string;
   chapter: string;
   content: string;
-  sourceType: 'textbook' | 'notes' | 'past_paper' | 'syllabus';
+  sourceType: 'textbook' | 'notes' | 'past_paper' | 'web_search';
   uploadedAt: string;
 }
 
@@ -25,6 +25,12 @@ export interface Citation {
   sourceTitle: string;
   snippet: string;
   confidence: number;
+  uri?: string;
+}
+
+export interface WebSearchSource {
+  title: string;
+  uri: string;
 }
 
 export interface StudySummary {
@@ -32,6 +38,7 @@ export interface StudySummary {
   keyFormulasAndDefinitions: string[];
   boardExamPitfalls: string[];
   suggestedReviewQuestions: string[];
+  webReferences?: WebSearchSource[];
 }
 
 export interface AudioPodcastSpeaker {
@@ -43,7 +50,7 @@ export interface AudioPodcastSpeaker {
 export interface AudioPodcastEpisode {
   id: string;
   topic: string;
-  subject: StemSubject;
+  subject: string;
   duration: string;
   dialogue: AudioPodcastSpeaker[];
 }
@@ -53,6 +60,7 @@ export interface SocraticMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   citations?: Citation[];
+  webSources?: WebSearchSource[];
   timestamp: string;
   guidedQuestions?: string[];
 }
@@ -69,7 +77,7 @@ export interface QuizQuestion {
 
 export interface QuizResult {
   quizId: string;
-  subject: StemSubject;
+  subject: string;
   topic: string;
   score: number;
   totalQuestions: number;
@@ -85,7 +93,7 @@ export interface QuizResult {
 
 export interface WeakSpotRecord {
   id: string;
-  subject: StemSubject;
+  subject: string;
   topic: string;
   chapter: string;
   masteryPercentage: number;
@@ -109,7 +117,7 @@ export interface MindMapLink {
 
 export interface MindMapData {
   topic: string;
-  subject: StemSubject;
+  subject: string;
   nodes: MindMapNode[];
   links: MindMapLink[];
 }
@@ -121,11 +129,12 @@ export interface OmniRouteConfig {
   geminiApiKey: string;
   ollamaBaseUrl: string;
   localModelName: string;
+  enableWebSearch: boolean;
 }
 
 export interface OmniRouteRequest {
   action: 'chat' | 'synthesize' | 'quiz' | 'audio_script' | 'mindmap' | 'diagnose' | 'ping';
-  subject?: StemSubject;
+  subject?: string;
   topic?: string;
   context?: string;
   userMessage?: string;
@@ -141,4 +150,5 @@ export interface OmniRouteResponse {
   data: any;
   error?: string;
   isOfflineFallback?: boolean;
+  webSources?: WebSearchSource[];
 }

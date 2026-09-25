@@ -3,22 +3,13 @@ import {
   OmniRouteRequest,
   OmniRouteResponse,
   AIProvider,
-  StemSubject,
   SocraticMessage,
   StudySummary,
   QuizQuestion,
-  AudioPodcastEpisode,
   MindMapData,
   WeakSpotRecord,
+  WebSearchSource,
 } from '@/types/stem';
-import {
-  PRELOADED_DOCUMENTS,
-  PRELOADED_SUMMARIES,
-  PRELOADED_PODCASTS,
-  PRELOADED_QUIZZES,
-  PRELOADED_MINDMAPS,
-  INITIAL_WEAK_SPOTS,
-} from './fbise-curriculum';
 
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || '';
 const DEFAULT_OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
@@ -28,11 +19,12 @@ export async function processOmniRoute(
   request: OmniRouteRequest
 ): Promise<OmniRouteResponse> {
   const startTime = Date.now();
-  const provider: AIProvider = request.config?.provider || 'demo_fallback';
+  const provider: AIProvider = request.config?.provider || (DEFAULT_GEMINI_KEY ? 'gemini' : 'demo_fallback');
   const geminiApiKey = request.config?.geminiApiKey || DEFAULT_GEMINI_KEY;
   const ollamaUrl = request.config?.ollamaBaseUrl || DEFAULT_OLLAMA_URL;
   const localModel = request.config?.localModelName || DEFAULT_LOCAL_MODEL;
-  const subject: StemSubject = request.subject || 'physics';
+  const enableWebSearch = request.config?.enableWebSearch ?? true;
+  const subject = request.subject || 'STEM';
 
   // 1. Handle Ping Action
   if (request.action === 'ping') {
@@ -56,7 +48,7 @@ export async function processOmniRoute(
           success: true,
           providerUsed: 'gemini',
           latencyMs: Date.now() - startTime,
-          data: { status: 'Connected to Google Gemini 2.5 Flash Cloud API successfully.' },
+          data: { status: 'Connected to Google Gemini (Web Search Grounding Supported).' },
         };
       } catch (err: any) {
         return {
@@ -106,79 +98,76 @@ export async function processOmniRoute(
         };
       }
     } else {
-      // Demo Fallback ping
       return {
         success: true,
         providerUsed: 'demo_fallback',
-        latencyMs: 12,
+        latencyMs: 10,
         data: {
-          status:
-            'Exhibition Offline Engine Active. Guaranteed zero-latency responses for FBISE STEM subjects.',
+          status: 'Local Student Engine Active. Fast response on any custom topic or note.',
         },
       };
     }
   }
 
-  // 2. Try executing with preferred provider, with auto-fallback to Exhibition Engine
+  // 2. Try executing with selected provider
   try {
     if (provider === 'gemini' && geminiApiKey) {
-      return await executeWithGemini(request, geminiApiKey, startTime);
+      return await executeWithGemini(request, geminiApiKey, enableWebSearch, startTime);
     } else if (provider === 'qwen_local') {
       return await executeWithOllama(request, ollamaUrl, localModel, startTime);
     }
   } catch (err) {
-    console.warn(`[OmniRouter] Provider ${provider} failed, engaging Exhibition Fallback engine:`, err);
+    console.warn(`[OmniRouter] Provider ${provider} failed, using Student Fallback:`, err);
   }
 
-  // 3. Exhibition Offline Fallback Engine (Guaranteed zero-crash)
-  return executeWithFallbackEngine(request, startTime);
+  // 3. Dynamic User-Driven Fallback Engine
+  return executeWithDynamicFallback(request, startTime);
 }
 
 // -------------------------------------------------------------
-// Google Gemini Provider Execution
+// Google Gemini with Web Search Grounding
 // -------------------------------------------------------------
 async function executeWithGemini(
   request: OmniRouteRequest,
   apiKey: string,
+  enableWebSearch: boolean,
   startTime: number
 ): Promise<OmniRouteResponse> {
   const ai = new GoogleGenAI({ apiKey });
-  const subject = request.subject || 'physics';
+  const subject = request.subject || 'STEM';
+  const tools = enableWebSearch ? [{ googleSearch: {} }] : undefined;
 
   if (request.action === 'chat') {
-    const prompt = `You are the FBISE STEM Intellect Socratic AI Tutor for HSSC students in ${subject}.
-Context: ${request.context || 'FBISE HSSC Curriculum'}
-Student question: ${request.userMessage || ''}
+    const prompt = `You are a high-level Student AI Assistant & Socratic Mentor for ${subject}.
+${enableWebSearch ? 'You have access to Google Search to look up the latest live information, scientific research, board past papers, and solutions.' : ''}
+Student's study material/notes context:
+"""${request.context || 'No specific document attached. Use general STEM knowledge and live web search.'}"""
 
-Respond following the Socratic method:
-1. Explain the underlying STEM scientific principle with clear FBISE curriculum references.
-2. Provide a thought-provoking guiding follow-up question to test their understanding.
-3. Suggest 2 short guided exploration questions.
+Student message: "${request.userMessage || 'Explain this topic'}"
 
-Format response cleanly with markdown.`;
+Instructions:
+1. Provide a comprehensive, crystal-clear explanation grounded in the user's material and live web sources.
+2. If web search was used, mention key findings with direct relevance.
+3. Suggest 2 interactive follow-up questions to test understanding.`;
 
     const result = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
+      config: tools ? { tools } : undefined,
     });
-    const text = result.text || 'I am ready to guide you through your FBISE STEM concepts.';
+
+    const text = result.text || 'I analyzed your request and notes.';
+    const webSources: WebSearchSource[] = extractWebSources(result);
 
     const message: SocraticMessage = {
       id: `msg-${Date.now()}`,
       role: 'assistant',
       content: text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      citations: [
-        {
-          sourceId: `doc-${subject}`,
-          sourceTitle: `FBISE ${subject.toUpperCase()} Core Textbook Reference`,
-          snippet: 'Aligned with Federal Board Student Learning Objectives (SLOs).',
-          confidence: 0.96,
-        },
-      ],
+      webSources: webSources.length > 0 ? webSources : undefined,
       guidedQuestions: [
-        'How would this principle change if we double the temperature in Kelvin?',
-        'Can you identify the thermodynamic boundary conditions for this equation?',
+        'How would you apply this in an exam numerical or real-world problem?',
+        'What is the core prerequisite principle underlying this concept?',
       ],
     };
 
@@ -187,30 +176,35 @@ Format response cleanly with markdown.`;
       providerUsed: 'gemini',
       latencyMs: Date.now() - startTime,
       data: message,
+      webSources: webSources,
     };
   }
 
   if (request.action === 'synthesize') {
-    const prompt = `Analyze the following FBISE ${subject} study notes/document and produce a rigorous JSON study brief:
-Document Context: ${request.context || ''}
+    const prompt = `You are an expert academic research synthesizer.
+Analyze this study material uploaded by the student:
+"""${request.context || request.topic || 'General notes'}"""
 
-Return ONLY valid JSON matching this exact structure:
+Generate an in-depth study brief. Return ONLY valid JSON with this exact schema:
 {
-  "executiveSummary": "...",
-  "keyFormulasAndDefinitions": ["formula 1", "formula 2"],
-  "boardExamPitfalls": ["pitfall 1", "pitfall 2"],
-  "suggestedReviewQuestions": ["question 1", "question 2"]
+  "executiveSummary": "Concise high-impact summary of the material",
+  "keyFormulasAndDefinitions": ["key concept 1", "key concept 2", "key formula 3"],
+  "boardExamPitfalls": ["common mistake students make in exams 1", "misconception 2"],
+  "suggestedReviewQuestions": ["practice question 1", "practice question 2"]
 }`;
 
     const result = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
+      config: tools ? { tools } : undefined,
     });
 
-    const parsed = cleanAndParseJSON<StudySummary>(
-      result.text || '',
-      PRELOADED_SUMMARIES[subject]
-    );
+    const parsed = cleanAndParseJSON<StudySummary>(result.text || '', {
+      executiveSummary: 'Synthesized study brief based on your custom notes.',
+      keyFormulasAndDefinitions: ['Key principle extracted from your material'],
+      boardExamPitfalls: ['Ensure units and sign conventions are carefully checked.'],
+      suggestedReviewQuestions: ['Derive the primary relationship from first principles.'],
+    });
 
     return {
       success: true,
@@ -221,16 +215,19 @@ Return ONLY valid JSON matching this exact structure:
   }
 
   if (request.action === 'quiz') {
-    const prompt = `Generate 5 multiple-choice questions for FBISE HSSC ${subject} on topic "${request.topic || 'Core Curriculum'}".
-Return ONLY valid JSON array with structure:
+    const prompt = `Generate 5 interactive multiple-choice quiz questions based on the following student material or topic:
+Topic: "${request.topic || subject}"
+Notes context: """${request.context || ''}"""
+
+Return ONLY a valid JSON array of 5 questions with this exact structure:
 [
   {
     "id": "q1",
-    "question": "question text",
-    "options": ["opt A", "opt B", "opt C", "opt D"],
+    "question": "Question text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
     "correctIndex": 0,
-    "explanation": "why this is correct according to FBISE textbook",
-    "sloReference": "FBISE SLO reference code",
+    "explanation": "Clear explanation of why this answer is correct",
+    "sloReference": "Standard Learning Objective",
     "difficulty": "Application"
   }
 ]`;
@@ -240,10 +237,17 @@ Return ONLY valid JSON array with structure:
       contents: prompt,
     });
 
-    const parsed = cleanAndParseJSON<QuizQuestion[]>(
-      result.text || '',
-      PRELOADED_QUIZZES[subject]
-    );
+    const parsed = cleanAndParseJSON<QuizQuestion[]>(result.text || '', [
+      {
+        id: 'q1',
+        question: `What is the primary governing principle of ${request.topic || subject}?`,
+        options: ['Conservation of energy', 'Thermodynamic equilibrium', 'Linear transformation', 'Entropy maximization'],
+        correctIndex: 0,
+        explanation: 'Fundamental laws require energy conservation across isolated systems.',
+        sloReference: `${subject.toUpperCase()} Core Standard`,
+        difficulty: 'Conceptual',
+      },
+    ]);
 
     return {
       success: true,
@@ -253,12 +257,113 @@ Return ONLY valid JSON array with structure:
     };
   }
 
-  // Fallback to offline engine for other actions if needed
-  return executeWithFallbackEngine(request, startTime);
+  if (request.action === 'mindmap') {
+    const prompt = `Generate a concept mind map (nodes and links) for student study on topic: "${request.topic || subject}".
+Material: """${request.context || ''}"""
+
+Return ONLY valid JSON with this exact structure:
+{
+  "topic": "${request.topic || subject}",
+  "subject": "${subject}",
+  "nodes": [
+    { "id": "1", "label": "Main Topic", "category": "core", "description": "Core foundation" },
+    { "id": "2", "label": "Prerequisite Concept", "category": "prerequisite", "description": "Required background" },
+    { "id": "3", "label": "Exam Focus Area", "category": "exam_focus", "description": "High-yield exam topic" },
+    { "id": "4", "label": "Practical Application", "category": "application", "description": "Real world use" }
+  ],
+  "links": [
+    { "source": "1", "target": "2", "relation": "Builds on" },
+    { "source": "1", "target": "3", "relation": "Assessed in" },
+    { "source": "1", "target": "4", "relation": "Applies to" }
+  ]
+}`;
+
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+
+    const parsed = cleanAndParseJSON<MindMapData>(result.text || '', {
+      topic: request.topic || subject,
+      subject: subject,
+      nodes: [
+        { id: '1', label: request.topic || subject, category: 'core', description: 'Core subject node' },
+        { id: '2', label: 'Fundamental Theories', category: 'prerequisite', description: 'Underlying principles' },
+        { id: '3', label: 'Board Exam Problems', category: 'exam_focus', description: 'Numerical and derivation focus' },
+      ],
+      links: [
+        { source: '1', target: '2', relation: 'Founded upon' },
+        { source: '1', target: '3', relation: 'Tested via' },
+      ],
+    });
+
+    return {
+      success: true,
+      providerUsed: 'gemini',
+      latencyMs: Date.now() - startTime,
+      data: parsed,
+    };
+  }
+
+  if (request.action === 'audio_script') {
+    const prompt = `Create a lively, educational 2-person dialogue (Dr. Sarah and Alex) breaking down this student's topic: "${request.topic || subject}".
+Notes: """${request.context || ''}"""
+
+Return ONLY valid JSON:
+{
+  "id": "pod-custom",
+  "topic": "${request.topic || subject}",
+  "subject": "${subject}",
+  "duration": "2 min",
+  "dialogue": [
+    { "speaker": "Dr. Sarah (Concept Lead)", "text": "Welcome to our study overview. Today Alex and I are diving into...", "timestamp": "0:00" },
+    { "speaker": "Alex (Student Fellow)", "text": "Thanks Dr. Sarah! What is the most critical concept students need to master here?", "timestamp": "0:15" },
+    { "speaker": "Dr. Sarah (Concept Lead)", "text": "The key is understanding...", "timestamp": "0:30" }
+  ]
+}`;
+
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+
+    const parsed = cleanAndParseJSON(result.text || '', {
+      id: 'pod-custom',
+      topic: request.topic || subject,
+      subject: subject,
+      duration: '2 min',
+      dialogue: [
+        {
+          speaker: 'Dr. Sarah (Concept Lead)',
+          text: `Welcome! Let's explore ${request.topic || subject} together.`,
+          timestamp: '0:00',
+        },
+        {
+          speaker: 'Alex (Student Fellow)',
+          text: 'What are the main insights from these study notes?',
+          timestamp: '0:15',
+        },
+        {
+          speaker: 'Dr. Sarah (Concept Lead)',
+          text: 'Pay close attention to first principles and key equations.',
+          timestamp: '0:30',
+        },
+      ],
+    });
+
+    return {
+      success: true,
+      providerUsed: 'gemini',
+      latencyMs: Date.now() - startTime,
+      data: parsed,
+    };
+  }
+
+  return executeWithDynamicFallback(request, startTime);
 }
 
 // -------------------------------------------------------------
-// Local Ollama (Qwen 14B) Provider Execution
+// Local Ollama Execution
 // -------------------------------------------------------------
 async function executeWithOllama(
   request: OmniRouteRequest,
@@ -266,13 +371,12 @@ async function executeWithOllama(
   model: string,
   startTime: number
 ): Promise<OmniRouteResponse> {
-  const subject = request.subject || 'physics';
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-  const prompt = `[Qwen 14B FBISE STEM Tutor] Subject: ${subject}. User asks: ${
+  const prompt = `[Local Qwen Tutor] User asks: ${
     request.userMessage || request.topic || 'Explain core principles'
-  }. Explain with Socratic clarity.`;
+  }. Context: ${request.context || ''}`;
 
   const res = await fetch(`${baseUrl}/api/generate`, {
     method: 'POST',
@@ -300,15 +404,11 @@ async function executeWithOllama(
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     citations: [
       {
-        sourceId: `local-doc-${subject}`,
-        sourceTitle: `Local Qwen 14B FBISE Inference (${model})`,
-        snippet: 'Generated 100% offline via local GPU/CPU compute.',
-        confidence: 0.94,
+        sourceId: 'local-qwen',
+        sourceTitle: `Local Qwen 14B (${model})`,
+        snippet: 'Generated 100% offline on your device.',
+        confidence: 0.95,
       },
-    ],
-    guidedQuestions: [
-      'What are the key mathematical assumptions behind this derivation?',
-      'How does this link to previous chapters in the FBISE board syllabus?',
     ],
   };
 
@@ -321,53 +421,32 @@ async function executeWithOllama(
 }
 
 // -------------------------------------------------------------
-// Exhibition Offline Fallback Engine (Guaranteed Zero Errors)
+// Dynamic User-Driven Fallback Engine
 // -------------------------------------------------------------
-function executeWithFallbackEngine(
+function executeWithDynamicFallback(
   request: OmniRouteRequest,
   startTime: number
 ): OmniRouteResponse {
-  const subject: StemSubject = request.subject || 'physics';
+  const query = request.userMessage || request.topic || 'STEM Concept';
+  const context = request.context || '';
 
   if (request.action === 'chat') {
-    const userQuery = (request.userMessage || '').toLowerCase();
-    let reply = '';
-    let citations = [
-      {
-        sourceId: `doc-${subject}`,
-        sourceTitle: `FBISE ${subject.toUpperCase()} Core Textbook (National Book Foundation)`,
-        snippet: 'Reference from Chapter 11 / Chapter 8 HSSC syllabus guidelines.',
-        confidence: 0.98,
-      },
-    ];
-
-    if (userQuery.includes('carnot') || userQuery.includes('efficiency')) {
-      reply = `In the Carnot Engine (FBISE Physics Ch. 11), thermal efficiency is given by **η = 1 - (T2 / T1) = (T1 - T2) / T1**.
-
-Key Socratic Check:
-Notice that efficiency depends **only** on the absolute temperatures of the heat source (T1) and sink (T2) in Kelvin, never on the working substance.
-To achieve 100% efficiency (η = 1), T2 would have to be Absolute Zero (0 Kelvin), which violates the Third Law of Thermodynamics.
-
-💡 **Board Exam Tip**: Always convert temperatures to Kelvin (K = °C + 273.15). For example, 127°C is 400 K and 27°C is 300 K, giving η = 1 - (300/400) = 25%.`;
-    } else {
-      reply = `According to the FBISE ${subject.toUpperCase()} Student Learning Objectives (SLOs):
-
-1. **Fundamental Mechanism**: STEM phenomena must be understood through first principles and mathematical derivation.
-2. **Conservation Laws**: Always balance mass, energy, or logical state across initial and final stages.
-3. **Board Numerical Formula**: Ensure SI units are maintained throughout all intermediate calculations.
-
-How would you formulate the boundary condition for this problem?`;
-    }
-
     const message: SocraticMessage = {
-      id: `msg-fallback-${Date.now()}`,
+      id: `msg-local-${Date.now()}`,
       role: 'assistant',
-      content: reply,
+      content: `I've analyzed your question regarding "${query}":
+
+${context ? `From your uploaded notes:\n• Key Concept: ${context.slice(0, 200)}...\n` : ''}
+Key Academic Insights:
+1. **Core Mechanism**: Break the concept down into initial state, transformation rules, and boundary conditions.
+2. **Formula Application**: Verify all units match standard SI dimensions before computing numerical values.
+3. **Common Board Pitfall**: Avoid mixing up sign conventions or failing to convert units (e.g. Celsius to Kelvin).
+
+What specific step would you like to derive next?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      citations: citations,
       guidedQuestions: [
-        'Why does increasing the source temperature T1 increase Carnot efficiency more effectively than lowering T2 by the same amount?',
-        'What is the physical meaning of the area enclosed by the Carnot indicator diagram (P-V curve)?',
+        'How would you verify this result with an alternative method?',
+        'Can you formulate the boundary condition for this case?',
       ],
     };
 
@@ -381,7 +460,25 @@ How would you formulate the boundary condition for this problem?`;
   }
 
   if (request.action === 'synthesize') {
-    const summary = PRELOADED_SUMMARIES[subject] || PRELOADED_SUMMARIES.physics;
+    const summary: StudySummary = {
+      executiveSummary: context
+        ? `Executive synthesis of: "${context.slice(0, 160)}..."`
+        : `Executive study brief for ${request.topic || 'Your Custom Notes'}.`,
+      keyFormulasAndDefinitions: [
+        'Conservation of State: Total input matches total output across closed boundaries',
+        'Rate Law: dx/dt is directly proportional to driving potential',
+        'Equilibrium Threshold: ΔG = 0 or net force = 0',
+      ],
+      boardExamPitfalls: [
+        'Neglecting unit conversions in numerical calculations',
+        'Confusing empirical rate orders with theoretical molecularity',
+      ],
+      suggestedReviewQuestions: [
+        `Explain the fundamental derivation of ${request.topic || 'the topic'}.`,
+        'Solve for unknown variables using standard boundary equations.',
+      ],
+    };
+
     return {
       success: true,
       providerUsed: 'demo_fallback',
@@ -392,7 +489,37 @@ How would you formulate the boundary condition for this problem?`;
   }
 
   if (request.action === 'quiz') {
-    const quiz = PRELOADED_QUIZZES[subject] || PRELOADED_QUIZZES.physics;
+    const topic = request.topic || 'STEM Practice';
+    const quiz: QuizQuestion[] = [
+      {
+        id: 'q1',
+        question: `In the study of ${topic}, what is the critical initial condition?`,
+        options: ['State equilibrium', 'Non-zero driving potential', 'Constant velocity', 'Adiabatic boundary'],
+        correctIndex: 1,
+        explanation: 'A non-zero driving potential is required to initiate dynamic transformation.',
+        sloReference: `${topic} - SLO 1`,
+        difficulty: 'Conceptual',
+      },
+      {
+        id: 'q2',
+        question: `When solving numerical problems on ${topic}, which conversion is most commonly required?`,
+        options: ['Standard SI unit normalization', 'Logarithmic scale inversion', 'Scalar to vector projection', 'Dimensional parity check'],
+        correctIndex: 0,
+        explanation: 'SI units must be consistently maintained throughout all calculation stages.',
+        sloReference: `${topic} - SLO 2`,
+        difficulty: 'Application',
+      },
+      {
+        id: 'q3',
+        question: `Which factor directly increases the efficiency of ${topic}?`,
+        options: ['Minimizing parasitic resistance/heat loss', 'Increasing ambient entropy', 'Lowering source potential', 'Adding uncalibrated mass'],
+        correctIndex: 0,
+        explanation: 'Minimizing irreversibility directly improves system efficiency.',
+        sloReference: `${topic} - SLO 3`,
+        difficulty: 'Analytical',
+      },
+    ];
+
     return {
       success: true,
       providerUsed: 'demo_fallback',
@@ -402,19 +529,24 @@ How would you formulate the boundary condition for this problem?`;
     };
   }
 
-  if (request.action === 'audio_script') {
-    const podcast = PRELOADED_PODCASTS[subject] || PRELOADED_PODCASTS.physics;
-    return {
-      success: true,
-      providerUsed: 'demo_fallback',
-      latencyMs: Date.now() - startTime,
-      data: podcast,
-      isOfflineFallback: true,
-    };
-  }
-
   if (request.action === 'mindmap') {
-    const mindmap = PRELOADED_MINDMAPS[subject] || PRELOADED_MINDMAPS.physics;
+    const topic = request.topic || 'STEM Study Topic';
+    const mindmap: MindMapData = {
+      topic: topic,
+      subject: request.subject || 'STEM',
+      nodes: [
+        { id: '1', label: topic, category: 'core', description: 'Central student study topic' },
+        { id: '2', label: 'Prerequisites & Definitions', category: 'prerequisite', description: 'Required fundamental principles' },
+        { id: '3', label: 'Board Exam Numerical Focus', category: 'exam_focus', description: 'Key formulas and derivations' },
+        { id: '4', label: 'Real-World Applications', category: 'application', description: 'Practical implementations' },
+      ],
+      links: [
+        { source: '1', target: '2', relation: 'Derived from' },
+        { source: '1', target: '3', relation: 'Examined through' },
+        { source: '1', target: '4', relation: 'Applied in' },
+      ],
+    };
+
     return {
       success: true,
       providerUsed: 'demo_fallback',
@@ -424,13 +556,35 @@ How would you formulate the boundary condition for this problem?`;
     };
   }
 
-  if (request.action === 'diagnose') {
-    const weakSpots = INITIAL_WEAK_SPOTS;
+  if (request.action === 'audio_script') {
+    const topic = request.topic || 'Your Custom Notes';
     return {
       success: true,
       providerUsed: 'demo_fallback',
       latencyMs: Date.now() - startTime,
-      data: weakSpots,
+      data: {
+        id: 'pod-user',
+        topic: topic,
+        subject: request.subject || 'STEM',
+        duration: '2 min',
+        dialogue: [
+          {
+            speaker: 'Dr. Sarah (Concept Lead)',
+            text: `Welcome to our student study breakdown of ${topic}!`,
+            timestamp: '0:00',
+          },
+          {
+            speaker: 'Alex (Student Fellow)',
+            text: `Thanks Dr. Sarah! What is the main highlight from the student notes?`,
+            timestamp: '0:12',
+          },
+          {
+            speaker: 'Dr. Sarah (Concept Lead)',
+            text: `The most important takeaway is connecting the core derivation with practical exam problems.`,
+            timestamp: '0:26',
+          },
+        ],
+      },
       isOfflineFallback: true,
     };
   }
@@ -439,13 +593,37 @@ How would you formulate the boundary condition for this problem?`;
     success: true,
     providerUsed: 'demo_fallback',
     latencyMs: Date.now() - startTime,
-    data: { status: 'Action processed by Exhibition Offline Engine.' },
+    data: { status: 'Processed safely.' },
     isOfflineFallback: true,
   };
 }
 
 // -------------------------------------------------------------
-// Helper: Clean and Parse JSON from LLM Markdown
+// Helper: Extract Web Sources from Gemini GroundingMetadata
+// -------------------------------------------------------------
+function extractWebSources(result: any): WebSearchSource[] {
+  const sources: WebSearchSource[] = [];
+  try {
+    const candidate = result.candidates?.[0];
+    const metadata = candidate?.groundingMetadata;
+    if (metadata?.groundingChunks) {
+      for (const chunk of metadata.groundingChunks) {
+        if (chunk.web?.uri && chunk.web?.title) {
+          sources.push({
+            title: chunk.web.title,
+            uri: chunk.web.uri,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore extraction errors
+  }
+  return sources;
+}
+
+// -------------------------------------------------------------
+// Helper: Parse JSON safely
 // -------------------------------------------------------------
 function cleanAndParseJSON<T>(rawText: string, fallback: T): T {
   try {
@@ -456,8 +634,7 @@ function cleanAndParseJSON<T>(rawText: string, fallback: T): T {
       cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
     return JSON.parse(cleaned) as T;
-  } catch (err) {
-    console.warn('[OmniRouter] Failed to parse JSON, falling back:', err);
+  } catch {
     return fallback;
   }
 }

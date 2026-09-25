@@ -58,6 +58,7 @@ export default function SettingsView({
       geminiApiKey: geminiKey,
       ollamaBaseUrl: ollamaUrl,
       localModelName: localModel,
+      enableWebSearch: omniConfig.enableWebSearch ?? true,
     };
     onUpdateOmniConfig(updated);
     try {
