@@ -87,7 +87,7 @@ export default function Home() {
             )}
 
             {currentView === "tutor" && (
-              <EduAgentView omniConfig={omniConfig} />
+              <EduAgentView omniConfig={omniConfig} onNavigate={setCurrentView} />
             )}
 
             {currentView === "flashcards" && (

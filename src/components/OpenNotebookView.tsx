@@ -32,36 +32,41 @@ interface OpenNotebookViewProps {
 }
 
 export default function OpenNotebookView({ omniConfig }: OpenNotebookViewProps) {
-  // User's own notebooks & documents
-  const [documents, setDocuments] = useState<NotebookDocument[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("student_notebook_docs");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return [
-      {
-        id: "doc-my-first-note",
-        subject: "Physics",
-        title: "Carnot Engine & Thermodynamic Limits",
-        chapter: "Chapter 11: Thermodynamics",
-        content: `First Law of Thermodynamics: ΔQ = ΔU + W, where W = P·ΔV.
+  // Default seed note
+  const DEFAULT_NOTE: NotebookDocument = {
+    id: "doc-my-first-note",
+    subject: "Physics",
+    title: "Carnot Engine & Thermodynamic Limits",
+    chapter: "Chapter 11: Thermodynamics",
+    content: `First Law of Thermodynamics: ΔQ = ΔU + W, where W = P·ΔV.
 Carnot Engine operates between Hot Reservoir (T1) and Cold Reservoir (T2) in Kelvin.
 The 4 strokes: 1) Isothermal expansion, 2) Adiabatic expansion, 3) Isothermal compression, 4) Adiabatic compression.
 Carnot Efficiency formula: η = 1 - (T2 / T1) = (T1 - T2) / T1.
 100% efficiency is impossible because T2 would have to be 0 Kelvin (Absolute Zero).
 Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
-        sourceType: "notes",
-        uploadedAt: new Date().toISOString(),
-      },
-    ];
-  });
+    sourceType: "notes",
+    uploadedAt: "2026-09-25T00:00:00.000Z",
+  };
 
-  const [selectedDocId, setSelectedDocId] = useState<string>(
-    documents[0]?.id || "doc-my-first-note"
-  );
+  const [documents, setDocuments] = useState<NotebookDocument[]>([DEFAULT_NOTE]);
+  const [selectedDocId, setSelectedDocId] = useState<string>("doc-my-first-note");
+  const [isMounted, setIsMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"text" | "summary" | "podcast">("text");
+
+  // Load from localStorage on mount (prevents hydration mismatch)
+  useEffect(() => {
+    setIsMounted(true);
+    try {
+      const saved = localStorage.getItem("student_notebook_docs");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setDocuments(parsed);
+          setSelectedDocId(parsed[0].id);
+        }
+      }
+    } catch {}
+  }, []);
 
   // New Note Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -104,12 +109,13 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
   const activeDoc = documents.find((d) => d.id === selectedDocId) || documents[0];
 
-  // Save documents to localStorage whenever updated
+  // Save documents to localStorage whenever updated after mount
   useEffect(() => {
+    if (!isMounted) return;
     try {
       localStorage.setItem("student_notebook_docs", JSON.stringify(documents));
     } catch {}
-  }, [documents]);
+  }, [documents, isMounted]);
 
   // Synthesize Document
   const handleSynthesize = async () => {
@@ -457,36 +463,36 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
         </div>
 
         {/* Center Column: Live Document Reader & Study Brief (Col 4-8) */}
-        <div className="col-span-5 border-r border-blue-500/20 p-5 flex flex-col overflow-y-auto bg-[#060b14]/70">
+        <div className="col-span-5 border-r border-slate-800 p-5 flex flex-col overflow-y-auto bg-[#0e131f]">
           {/* Tabs */}
-          <div className="flex items-center justify-between border-b border-blue-500/20 pb-3 mb-4">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setActiveTab("text")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                   activeTab === "text"
-                    ? "bg-blue-600/30 text-blue-300 border border-blue-500/40"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 Note Content
               </button>
               <button
                 onClick={() => setActiveTab("summary")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                   activeTab === "summary"
-                    ? "bg-blue-600/30 text-blue-300 border border-blue-500/40"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                Executive Study Brief
+                Study Brief
               </button>
               <button
                 onClick={() => setActiveTab("podcast")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                   activeTab === "podcast"
-                    ? "bg-cyan-600/30 text-cyan-300 border border-cyan-500/40"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 <Volume2 className="w-3.5 h-3.5" />
@@ -494,7 +500,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
               </button>
             </div>
 
-            <span className="text-[11px] text-cyan-400 font-mono">
+            <span className="text-[11px] text-slate-400 font-medium">
               {activeDoc?.subject || "STEM Note"}
             </span>
           </div>
@@ -503,16 +509,16 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
           {activeTab === "text" && (
             <div className="space-y-4">
               {activeDoc ? (
-                <div className="p-4 rounded-xl bg-[#091122]/80 border border-blue-500/20">
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-blue-300">
+                    <span className="text-xs font-semibold text-blue-400">
                       {activeDoc.chapter}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-500">
                       {activeDoc.content.split(" ").length} words
                     </span>
                   </div>
-                  <h2 className="text-base font-bold text-white mb-3">
+                  <h2 className="text-sm font-semibold text-white mb-3">
                     {activeDoc.title}
                   </h2>
                   <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-line font-sans">
@@ -532,19 +538,19 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
             <div className="space-y-4">
               {summary ? (
                 <>
-                  <div className="p-4 rounded-xl bg-[#091122]/90 border border-blue-500/30">
-                    <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 mb-2">
+                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 mb-2">
                       <Lightbulb className="w-4 h-4" />
                       <span>Executive Concept Summary</span>
                     </div>
-                    <p className="text-xs text-slate-200 leading-relaxed">
+                    <p className="text-xs text-slate-300 leading-relaxed">
                       {summary.executiveSummary}
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-[#091122]/90 border border-blue-500/30">
-                    <h3 className="text-xs font-bold text-blue-300 uppercase tracking-wider mb-2">
-                      Key Formulas & Definitions
+                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wider mb-2">
+                      Key Formulas &amp; Definitions
                     </h3>
                     <ul className="space-y-1.5">
                       {summary.keyFormulasAndDefinitions.map((f, i) => (
@@ -556,8 +562,8 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     </ul>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30">
-                    <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-2">
+                  <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-800/40">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 mb-2">
                       <AlertTriangle className="w-4 h-4" />
                       <span>Exam Pitfalls to Avoid</span>
                     </div>
@@ -571,14 +577,14 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     </ul>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-[#091122]/90 border border-blue-500/30">
-                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">
+                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
                       Suggested Review Questions
                     </h3>
                     <ul className="space-y-2">
                       {summary.suggestedReviewQuestions.map((q, i) => (
                         <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                          <span className="text-emerald-400 font-bold font-mono">Q{i + 1}.</span>
+                          <span className="text-emerald-400 font-semibold font-mono">Q{i + 1}.</span>
                           <span>{q}</span>
                         </li>
                       ))}
@@ -598,9 +604,9 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
             <div className="space-y-4">
               {podcast ? (
                 <>
-                  <div className="p-5 rounded-2xl bg-gradient-to-br from-[#0c1a36] to-[#070e1c] border border-cyan-500/30 shadow-xl">
+                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-800 text-slate-300">
                         Interactive Podcast Overview (2 Speakers)
                       </span>
                       <span className="text-xs text-slate-400 font-mono">
@@ -608,28 +614,28 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                       </span>
                     </div>
 
-                    <h3 className="text-sm font-bold text-white mb-2">
+                    <h3 className="text-xs font-semibold text-white mb-2">
                       {podcast.topic}
                     </h3>
 
                     {/* Player Controls */}
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-[#060b14]/80 border border-blue-500/20">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800">
                       <div className="flex items-center gap-3">
                         <button
                           onClick={playPodcastAudio}
-                          className="w-10 h-10 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center transition-all shadow-md shadow-cyan-500/30 cursor-pointer"
+                          className="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center transition-colors cursor-pointer"
                         >
                           {isPlayingAudio ? (
-                            <Pause className="w-5 h-5 fill-slate-950" />
+                            <Pause className="w-4 h-4 fill-white" />
                           ) : (
-                            <Play className="w-5 h-5 fill-slate-950 ml-0.5" />
+                            <Play className="w-4 h-4 fill-white ml-0.5" />
                           )}
                         </button>
                         <div>
-                          <div className="text-xs font-bold text-white">
+                          <div className="text-xs font-medium text-white">
                             {isPlayingAudio ? "Now Playing" : "Paused"}
                           </div>
-                          <div className="text-[10px] text-cyan-300">
+                          <div className="text-[10px] text-slate-400">
                             Speaker: {podcast.dialogue[activeSpeakerIndex]?.speaker}
                           </div>
                         </div>
@@ -641,9 +647,9 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                           <button
                             key={spd}
                             onClick={() => setAudioSpeed(spd)}
-                            className={`px-2 py-1 rounded text-[10px] font-bold font-mono transition-all cursor-pointer ${
+                            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${
                               audioSpeed === spd
-                                ? "bg-cyan-500/30 text-cyan-300 border border-cyan-400/40"
+                                ? "bg-slate-800 text-blue-400 border border-slate-700"
                                 : "text-slate-400 hover:text-white"
                             }`}
                           >
@@ -655,23 +661,23 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   </div>
 
                   {/* Transcript */}
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {podcast.dialogue.map((line, idx) => {
                       const isCurrent = isPlayingAudio && activeSpeakerIndex === idx;
                       const isSarah = line.speaker.includes("Sarah");
                       return (
                         <div
                           key={idx}
-                          className={`p-3 rounded-xl border transition-all ${
+                          className={`p-3 rounded-lg border transition-colors ${
                             isCurrent
-                              ? "bg-cyan-950/40 border-cyan-400/50 shadow-md shadow-cyan-500/10"
-                              : "bg-[#091122]/70 border-blue-500/15"
+                              ? "bg-slate-800/90 border-blue-500/50"
+                              : "bg-slate-900/60 border-slate-800"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1">
                             <span
-                              className={`text-[10px] font-bold ${
-                                isSarah ? "text-cyan-400" : "text-purple-400"
+                              className={`text-[10px] font-semibold ${
+                                isSarah ? "text-blue-400" : "text-emerald-400"
                               }`}
                             >
                               {line.speaker}
@@ -698,16 +704,16 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
         </div>
 
         {/* Right Column: Q&A with Live Web Search (Col 9-12) */}
-        <div className="col-span-4 p-4 flex flex-col justify-between overflow-hidden bg-[#070e1c]/40">
+        <div className="col-span-4 p-4 flex flex-col justify-between overflow-hidden bg-[#0b0f17]">
           <div>
-            <div className="flex items-center justify-between border-b border-blue-500/20 pb-2.5 mb-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-bold text-white">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span className="text-xs font-semibold text-white">
                   RAG &amp; Live Web Research
                 </span>
               </div>
-              <span className="text-[10px] text-cyan-400 font-mono">
+              <span className="text-[10px] text-slate-400">
                 {webSearchEnabled ? "Google Search Active" : "Note Grounded"}
               </span>
             </div>
@@ -719,19 +725,19 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   key={i}
                   className={`p-3 rounded-xl text-xs leading-relaxed ${
                     msg.role === "user"
-                      ? "bg-blue-600/30 border border-blue-500/30 text-white ml-4"
-                      : "bg-[#091122]/90 border border-blue-500/20 text-slate-200 mr-2"
+                      ? "bg-blue-600 text-white ml-4"
+                      : "bg-slate-900 border border-slate-800 text-slate-200 mr-2"
                   }`}
                 >
-                  <div className="text-[10px] font-bold text-slate-400 mb-1">
-                    {msg.role === "user" ? "You" : "Study Assistant (Gemini)"}
+                  <div className="text-[10px] font-semibold text-slate-400 mb-1">
+                    {msg.role === "user" ? "You" : "Study Assistant (Gemini / OmniRoute)"}
                   </div>
                   <div className="whitespace-pre-line">{msg.content}</div>
 
                   {/* Web Sources Chips */}
                   {msg.webSources && msg.webSources.length > 0 && (
-                    <div className="mt-2.5 pt-2 border-t border-blue-500/20">
-                      <div className="text-[10px] font-bold text-cyan-400 flex items-center gap-1 mb-1.5">
+                    <div className="mt-2.5 pt-2 border-t border-slate-800">
+                      <div className="text-[10px] font-semibold text-blue-400 flex items-center gap-1 mb-1.5">
                         <Globe className="w-3 h-3" />
                         <span>Google Search Grounding Sources:</span>
                       </div>
@@ -742,7 +748,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                             href={src.uri}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 rounded-lg bg-[#060b14] hover:bg-cyan-950/40 border border-cyan-500/20 text-[10px] text-cyan-300 flex items-center justify-between transition-colors"
+                            className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[10px] text-blue-400 flex items-center justify-between transition-colors"
                           >
                             <span className="truncate max-w-[240px] font-medium">
                               {src.title}
@@ -757,11 +763,11 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
               ))}
 
               {isQuerying && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-[#091122]/90 border border-blue-500/20 text-xs text-cyan-300">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
                   <span>
                     {webSearchEnabled
-                      ? "Searching Google & grounding with notes..."
+                      ? "Searching Google &amp; grounding with notes..."
                       : "Analyzing document..."}
                   </span>
                 </div>
@@ -772,7 +778,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
           {/* Ask Input */}
           <form
             onSubmit={handleAskQuestion}
-            className="mt-3 pt-3 border-t border-blue-500/20 flex gap-2"
+            className="mt-3 pt-3 border-t border-slate-800 flex gap-2"
           >
             <input
               type="text"
@@ -783,12 +789,12 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   ? "Ask anything (searches live Google web & notes)..."
                   : "Ask about this note..."
               }
-              className="flex-1 px-3 py-2 text-xs rounded-xl bg-[#060b14] border border-blue-500/30 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+              className="flex-1 px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
             />
             <button
               type="submit"
               disabled={isQuerying || !inputQuery.trim()}
-              className="px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center"
+              className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center"
             >
               <Send className="w-3.5 h-3.5" />
             </button>
@@ -798,9 +804,9 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
       {/* Add Custom Note Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-[#070e1c] border border-blue-500/30 p-6 shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-1">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-xl bg-[#0e131f] border border-slate-800 p-6 shadow-xl">
+            <h3 className="text-sm font-semibold text-white mb-1">
               Add New Study Material / Note
             </h3>
             <p className="text-xs text-slate-400 mb-4">
@@ -810,7 +816,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
             <form onSubmit={handleAddNote} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  <label className="text-[11px] font-medium text-slate-300 block mb-1">
                     Subject
                   </label>
                   <input
@@ -819,11 +825,11 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     value={newSubject}
                     onChange={(e) => setNewSubject(e.target.value)}
                     placeholder="e.g. Physics, Chemistry, CS"
-                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#060b14] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  <label className="text-[11px] font-medium text-slate-300 block mb-1">
                     Chapter / Unit
                   </label>
                   <input
@@ -831,13 +837,13 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     value={newChapter}
                     onChange={(e) => setNewChapter(e.target.value)}
                     placeholder="e.g. Chapter 4: Motion"
-                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#060b14] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                <label className="text-[11px] font-medium text-slate-300 block mb-1">
                   Topic Title
                 </label>
                 <input
@@ -846,12 +852,12 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="e.g. Newton Laws and Momentum Conservation"
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#060b14] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400"
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                <label className="text-[11px] font-medium text-slate-300 block mb-1">
                   Content (Paste Text)
                 </label>
                 <textarea
@@ -860,7 +866,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
                   placeholder="Paste your study content, definitions, formulas, or past questions here..."
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#060b14] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400 font-sans"
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500 font-sans"
                 />
               </div>
 
@@ -868,13 +874,13 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
                 >
                   Save &amp; Ingest
                 </button>

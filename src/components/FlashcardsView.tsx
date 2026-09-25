@@ -64,19 +64,25 @@ const DEFAULT_FLASHCARDS: Flashcard[] = [
 ];
 
 export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
-  const [cards, setCards] = useState<Flashcard[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("student_flashcards_deck");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return DEFAULT_FLASHCARDS;
-  });
-
+  const [cards, setCards] = useState<Flashcard[]>(DEFAULT_FLASHCARDS);
+  const [isMounted, setIsMounted] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<string>("All");
+
+  // Load persistent cards on client mount
+  useEffect(() => {
+    setIsMounted(true);
+    try {
+      const saved = localStorage.getItem("student_flashcards_deck");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCards(parsed);
+        }
+      }
+    } catch {}
+  }, []);
 
   // AI Flashcard Generation
   const [generateTopic, setGenerateTopic] = useState("Carnot Heat Engine & Thermodynamics");
@@ -89,12 +95,13 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
   const [newCategory, setNewCategory] = useState("Formula");
   const [newSubject, setNewSubject] = useState("Physics");
 
-  // Save to localStorage
+  // Save to localStorage after mount
   useEffect(() => {
+    if (!isMounted) return;
     try {
       localStorage.setItem("student_flashcards_deck", JSON.stringify(cards));
     } catch {}
-  }, [cards]);
+  }, [cards, isMounted]);
 
   // Filter cards by subject
   const filteredCards = cards.filter(

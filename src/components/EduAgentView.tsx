@@ -11,11 +11,13 @@ import {
   Sparkles,
   HelpCircle,
   BookOpen,
-  ArrowRight,
   Globe,
   ExternalLink,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
   Plus,
-  Trash2,
+  ArrowRight,
 } from "lucide-react";
 import {
   SocraticMessage,
@@ -24,35 +26,46 @@ import {
   WeakSpotRecord,
   MindMapData,
   OmniRouteConfig,
+  Flashcard,
 } from "@/types/stem";
 
 interface EduAgentViewProps {
   omniConfig?: Partial<OmniRouteConfig>;
+  onNavigate?: (view: string) => void;
 }
 
-export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
+export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewProps) {
   const [activeTab, setActiveTab] = useState<"tutor" | "quiz" | "weakspots" | "mindmap">("tutor");
   const [customSubject, setCustomSubject] = useState("Physics");
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
 
-  // --- Socratic Tutor State ---
+  // --- Socratic Tutor Messages ---
   const [messages, setMessages] = useState<SocraticMessage[]>([
     {
       id: "init-1",
       role: "assistant",
       content:
-        "Welcome! I am your Socratic STEM Tutor. Ask me any question, derivation, or concept from your syllabus. With OmniRoute and Gemini, I can break down equations step-by-step and search live web references.",
+        "Welcome! I am your Socratic AI STEM Tutor & App Controller.\n\nI can answer questions, guide derivations, or directly control your workspace:\n• Ask me: \"Make 5 flashcards on Carnot cycle\"\n• Ask me: \"Generate a quiz on thermodynamics\"\n• Ask me: \"Create a mind map on electromagnetic induction\"\n• Ask any out-of-the-box STEM question (Google Gemini will search the live web automatically).",
       timestamp: "Ready",
       guidedQuestions: [
-        "Explain Carnot cycle efficiency from first principles",
-        "What are the most common exam traps on thermodynamics?",
+        "Make 5 flashcards on Carnot cycle",
+        "Generate a quiz on thermodynamics",
+        "Explain Carnot efficiency from first principles",
       ],
     },
   ]);
   const [userInput, setUserInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
 
-  // --- Custom Quiz Generator State ---
+  // Interactive inline flashcard carousel state for chat messages
+  const [inlineCardIndices, setInlineCardIndices] = useState<Record<string, number>>({});
+  const [inlineCardFlipped, setInlineCardFlipped] = useState<Record<string, boolean>>({});
+
+  // Interactive inline quiz state for chat messages
+  const [inlineQuizAnswers, setInlineQuizAnswers] = useState<Record<string, Record<number, number>>>({});
+  const [inlineQuizSubmitted, setInlineQuizSubmitted] = useState<Record<string, boolean>>({});
+
+  // --- Quiz Tab State ---
   const [quizTopicInput, setQuizTopicInput] = useState("Carnot Heat Engine & Thermodynamics");
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([
@@ -88,31 +101,38 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
   const [isQuizSubmitted, setIsQuizSubmitted] = useState(false);
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
 
-  // --- Weak Spots State ---
-  const [weakSpots, setWeakSpots] = useState<WeakSpotRecord[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("student_weak_spots");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return [
-      {
-        id: "ws-1",
-        subject: "Physics",
-        topic: "Carnot Engine Numerical Temperature Conversion",
-        chapter: "Thermodynamics",
-        masteryPercentage: 55,
-        status: "critical",
-        lastAssessed: new Date().toISOString(),
-        prescribedRemediation: [
-          "Convert Celsius to Kelvin (K = °C + 273.15) before computing η = 1 - (T2/T1).",
-          "Review First Law sign convention: Work done by gas is positive.",
-          "Practice 3 numerical exam questions on efficiency.",
-        ],
-      },
-    ];
-  });
+  // Initial default diagnostic record
+  const DEFAULT_WEAK_SPOTS: WeakSpotRecord[] = [
+    {
+      id: "ws-1",
+      subject: "Physics",
+      topic: "Carnot Engine Numerical Temperature Conversion",
+      chapter: "Thermodynamics",
+      masteryPercentage: 55,
+      status: "critical",
+      lastAssessed: "2026-09-25T00:00:00.000Z",
+      prescribedRemediation: [
+        "Convert Celsius to Kelvin (K = °C + 273.15) before computing η = 1 - (T2/T1).",
+        "Review First Law sign convention: Work done by gas is positive.",
+        "Practice 3 numerical exam questions on efficiency.",
+      ],
+    },
+  ];
+
+  const [weakSpots, setWeakSpots] = useState<WeakSpotRecord[]>(DEFAULT_WEAK_SPOTS);
+
+  // Load weak spots on client mount
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem("student_weak_spots");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setWeakSpots(parsed);
+        }
+      }
+    } catch {}
+  }, []);
 
   const saveWeakSpots = (spots: WeakSpotRecord[]) => {
     setWeakSpots(spots);
@@ -141,23 +161,364 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
   });
   const [selectedNodeId, setSelectedNodeId] = useState<string>("3");
 
-  // Robust Socratic Chat Send (Zero hanging, guaranteed response)
+  // Save flashcards directly to persistent deck
+  const saveGeneratedFlashcardsToDeck = (newCards: Flashcard[]) => {
+    if (typeof window === "undefined") return;
+    try {
+      const existing = localStorage.getItem("student_flashcards_deck");
+      const currentCards: Flashcard[] = existing ? JSON.parse(existing) : [];
+      const updated = [...newCards, ...currentCards];
+      localStorage.setItem("student_flashcards_deck", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Save flashcards error:", e);
+    }
+  };
+
+  // Save note directly to persistent notes
+  const saveNoteToNotebook = (title: string, content: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      const existing = localStorage.getItem("student_notebook_docs");
+      const currentNotes = existing ? JSON.parse(existing) : [];
+      const newNote = {
+        id: `doc-${Date.now()}`,
+        subject: customSubject,
+        title,
+        chapter: "Tutor Saved Material",
+        content,
+        sourceType: "notes",
+        uploadedAt: new Date().toISOString(),
+      };
+      localStorage.setItem("student_notebook_docs", JSON.stringify([newNote, ...currentNotes]));
+    } catch (e) {
+      console.error("Save note error:", e);
+    }
+  };
+
+  // --- AGENTIC CHAT DISPATCHER ---
   const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || userInput).trim();
-    if (!text) return;
+    const rawText = (textToSend || userInput).trim();
+    if (!rawText) return;
 
     setUserInput("");
     const userMsg: SocraticMessage = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: text,
+      content: rawText,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setIsChatting(true);
 
+    const lower = rawText.toLowerCase();
+
+    // 0. Direct Workspace Navigation & Control Commands
+    if (lower === "open flashcards" || lower === "go to flashcards" || lower === "flashcards studio" || lower === "/flashcards") {
+      if (onNavigate) onNavigate("flashcards");
+      const msg: SocraticMessage = {
+        id: `asst-${Date.now()}`,
+        role: "assistant",
+        content: "Navigating to Flashcards Studio. You can review your active recall cards and test spaced-repetition ratings.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, msg]);
+      setIsChatting(false);
+      return;
+    }
+
+    if (lower === "open notebook" || lower === "go to notebook" || lower === "my notes" || lower === "open notes") {
+      if (onNavigate) onNavigate("notebook");
+      const msg: SocraticMessage = {
+        id: `asst-${Date.now()}`,
+        role: "assistant",
+        content: "Navigating to My Notebooks. Your uploaded documents and notes are ready.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, msg]);
+      setIsChatting(false);
+      return;
+    }
+
+    if (lower === "open settings" || lower === "go to settings" || lower === "configure omniroute") {
+      if (onNavigate) onNavigate("settings");
+      const msg: SocraticMessage = {
+        id: `asst-${Date.now()}`,
+        role: "assistant",
+        content: "Opening Settings. You can test your OmniRoute Gateway connection or update API keys.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, msg]);
+      setIsChatting(false);
+      return;
+    }
+
+    if (lower === "start quiz" || lower === "take quiz" || lower === "practice quiz") {
+      setActiveTab("quiz");
+      const msg: SocraticMessage = {
+        id: `asst-${Date.now()}`,
+        role: "assistant",
+        content: "Switched to Practice Quiz mode! Select your answers for each question and submit for instant diagnostic scoring.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, msg]);
+      setIsChatting(false);
+      return;
+    }
+
+    if (lower === "show mind map" || lower === "open mind map" || lower === "view mind map") {
+      setActiveTab("mindmap");
+      const msg: SocraticMessage = {
+        id: `asst-${Date.now()}`,
+        role: "assistant",
+        content: "Switched to Mind Map view! You can explore the interconnected concept graph.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, msg]);
+      setIsChatting(false);
+      return;
+    }
+
+    if (lower === "clear chat" || lower === "reset tutor" || lower === "reset session") {
+      setMessages([
+        {
+          id: `init-${Date.now()}`,
+          role: "assistant",
+          content:
+            "Chat session refreshed. I am your Socratic AI STEM Tutor & App Controller.\n\nAsk me to:\n• \"Make 5 flashcards on ...\"\n• \"Generate a quiz on ...\"\n• \"Create a mind map on ...\"\n• Or ask any out-of-the-box STEM question (Google Gemini will search the live web automatically).",
+          timestamp: "Ready",
+          guidedQuestions: [
+            "Make 5 flashcards on Carnot cycle",
+            "Generate a quiz on thermodynamics",
+            "Check my weak spots",
+          ],
+        },
+      ]);
+      setIsChatting(false);
+      return;
+    }
+
+    // 1. Detect WEAK SPOTS intent
+    const isWeakSpotsIntent =
+      lower.includes("weak spot") ||
+      lower.includes("weak area") ||
+      lower.includes("diagnostic") ||
+      lower.includes("my score") ||
+      lower.includes("my performance");
+
+    if (isWeakSpotsIntent) {
+      if (weakSpots.length === 0) {
+        const msg: SocraticMessage = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: "Great news! You currently have no identified weak spots (<70% mastery). Keep taking practice quizzes to benchmark your understanding.",
+          actionType: "weakspots",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          guidedQuestions: [
+            "Generate a quiz on thermodynamics",
+            "Make flashcards on Carnot cycle",
+          ],
+        };
+        setMessages((prev) => [...prev, msg]);
+        setIsChatting(false);
+        return;
+      }
+
+      const summaryList = weakSpots
+        .map(
+          (ws, i) =>
+            `${i + 1}. **${ws.topic}** (Mastery: ${ws.masteryPercentage}%)\n` +
+            `   • Status: ${ws.status.toUpperCase()}\n` +
+            `   • Remediation: ${ws.prescribedRemediation[0] || "Review core concept"}`
+        )
+        .join("\n\n");
+
+      const assistantMsg: SocraticMessage = {
+        id: `asst-${Date.now()}`,
+        role: "assistant",
+        content: `Here are your current academic diagnostic weak spots (<70% mastery rule):\n\n${summaryList}\n\nWould you like me to generate a practice quiz or flashcards to remediate any of these?`,
+        actionType: "weakspots",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        guidedQuestions: [
+          `Generate a quiz on ${weakSpots[0]?.topic || "Weak Concepts"}`,
+          `Make flashcards on ${weakSpots[0]?.topic || "Weak Concepts"}`,
+        ],
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+      setIsChatting(false);
+      return;
+    }
+
+    // 2. Detect FLASHCARDS intent
+    const isFlashcardsIntent =
+      lower.includes("flashcard") ||
+      lower.startsWith("/flashcard") ||
+      /(?:make|create|generate|give me|build)\s*(?:\d+)?\s*flashcard/i.test(lower);
+
+    // 3. Detect QUIZ intent
+    const isQuizIntent =
+      (lower.includes("quiz") && !lower.includes("view quiz")) ||
+      lower.startsWith("/quiz") ||
+      /(?:make|create|generate|take|give me|quiz me on)\s*(?:a\s*)?quiz/i.test(lower);
+
+    // 4. Detect MIND MAP intent
+    const isMindMapIntent =
+      lower.includes("mind map") ||
+      lower.includes("mindmap") ||
+      lower.includes("concept map");
+
+    // 5. Detect NOTE intent
+    const isNoteIntent =
+      lower.startsWith("add note:") ||
+      lower.startsWith("save note:") ||
+      /(?:add|create|save)\s*(?:a\s*)?(?:study\s*)?note/i.test(lower);
+
     try {
+      if (isFlashcardsIntent) {
+        const topicMatch = rawText.match(/(?:on|for|about|of)\s+([^.?!,]+)/i);
+        const topic = topicMatch ? topicMatch[1].trim() : rawText.replace(/flashcards?/gi, "").trim() || "STEM Concept";
+
+        const res = await fetch("/api/ai/omni-route", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "flashcards",
+            subject: customSubject,
+            topic,
+            config: omniConfig,
+          }),
+        });
+        const data = await res.json();
+        const flashcards: Flashcard[] = data.success && Array.isArray(data.data) ? data.data : [];
+
+        if (flashcards.length > 0) {
+          saveGeneratedFlashcardsToDeck(flashcards);
+        }
+
+        const assistantMsg: SocraticMessage = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: `I've generated ${flashcards.length || 5} study flashcards for "${topic}" using OmniRoute models and saved them to your deck. You can review them below or open the full Flashcards Studio.`,
+          actionType: "flashcards",
+          flashcardsPayload: flashcards,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          guidedQuestions: [
+            `Generate a quiz on ${topic}`,
+            `Explain the primary derivation of ${topic}`,
+          ],
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        return;
+      }
+
+      if (isQuizIntent) {
+        const topicMatch = rawText.match(/(?:on|for|about|of)\s+([^.?!,]+)/i);
+        const topic = topicMatch ? topicMatch[1].trim() : rawText.replace(/quiz/gi, "").trim() || "STEM Topic";
+
+        const res = await fetch("/api/ai/omni-route", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "quiz",
+            subject: customSubject,
+            topic,
+            config: omniConfig,
+          }),
+        });
+        const data = await res.json();
+        const questions: QuizQuestion[] = data.success && Array.isArray(data.data) ? data.data : [];
+
+        if (questions.length > 0) {
+          setQuizQuestions(questions);
+          setQuizTopicInput(topic);
+        }
+
+        const assistantMsg: SocraticMessage = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: `I've generated a 5-question practice quiz on "${topic}" using OmniRoute models. Test your knowledge below or switch to Practice Quiz Mode for a full diagnostic assessment.`,
+          actionType: "quiz",
+          quizPayload: questions,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          guidedQuestions: [
+            `Make flashcards on ${topic}`,
+            "Show detailed derivation",
+          ],
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        return;
+      }
+
+      if (isMindMapIntent) {
+        const topicMatch = rawText.match(/(?:on|for|about|of)\s+([^.?!,]+)/i);
+        const topic = topicMatch ? topicMatch[1].trim() : "STEM Knowledge Graph";
+
+        const res = await fetch("/api/ai/omni-route", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "mindmap",
+            subject: customSubject,
+            topic,
+            config: omniConfig,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.data?.nodes) {
+          setMindMap(data.data);
+          setMindMapTopicInput(topic);
+        }
+
+        const assistantMsg: SocraticMessage = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: `Concept Knowledge Graph created for "${topic}" using OmniRoute. Found ${data.data?.nodes?.length || 4} interconnected concept nodes connecting prerequisites to board numericals.`,
+          actionType: "mindmap",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          guidedQuestions: [
+            `Make flashcards on ${topic}`,
+            `Generate a quiz on ${topic}`,
+          ],
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        return;
+      }
+
+      if (isNoteIntent) {
+        const noteContent = rawText.replace(/^(?:add|save|create)\s*(?:a\s*)?(?:study\s*)?note(?::|\s+about|\s+on)?/i, "").trim();
+        saveNoteToNotebook("Tutor Study Note", noteContent || rawText);
+
+        const assistantMsg: SocraticMessage = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: `✓ Saved study note to your personal notebook studio: "${noteContent.slice(0, 60)}..."`,
+          actionType: "note_created",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        return;
+      }
+
+      // 6. Socratic Chat & Out-of-the-Box Inquiries (Auto-Routed to Gemini with Google Search Grounding)
+      let noteContext = "";
+      try {
+        const saved = localStorage.getItem("student_notebook_docs");
+        if (saved) {
+          const docs = JSON.parse(saved);
+          if (Array.isArray(docs) && docs.length > 0) {
+            const matching =
+              docs.find(
+                (d: any) =>
+                  rawText.toLowerCase().includes(d.title?.toLowerCase() || "") ||
+                  d.subject?.toLowerCase() === customSubject.toLowerCase()
+              ) || docs[0];
+            if (matching) {
+              noteContext = `Note Title: ${matching.title}\nChapter: ${matching.chapter || "Study Material"}\nContent:\n${matching.content}`;
+            }
+          }
+        }
+      } catch {}
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -167,7 +528,8 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
         body: JSON.stringify({
           action: "chat",
           subject: customSubject,
-          userMessage: text,
+          userMessage: rawText,
+          context: noteContext,
           config: {
             ...omniConfig,
             enableWebSearch: webSearchEnabled,
@@ -184,53 +546,20 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
         throw new Error(data.error || "Empty response");
       }
     } catch (err: any) {
-      console.warn("API request issue, generating immediate tutor response:", err);
-      // Guarantee the student is NEVER left hanging!
+      console.warn("Tutor dispatch fallback:", err);
       const fallbackMsg: SocraticMessage = {
         id: `assistant-local-${Date.now()}`,
         role: "assistant",
-        content: `Here is the academic breakdown for "${text}":\n\n1. **Core Concept**: Begin by identifying the fundamental law and variables involved.\n2. **Mathematical Formulation**: Set up the governing relationship, ensuring all units are converted to standard SI (e.g. Kelvin for temperature, Joules for energy).\n3. **Exam Application**: In board exams, always verify whether boundary conditions or sign conventions alter the result.\n\nWould you like me to walk through the complete step-by-step derivation or a sample numerical?`,
+        content: `Regarding "${rawText}":\n\n1. **Core Concept**: Break the problem down into fundamental physical principles and governing equations.\n2. **Mathematical Formulation**: State boundary conditions and verify standard SI units.\n3. **Application**: Check sign conventions and common board exam pitfalls.\n\nWould you like me to make flashcards or a quiz on this topic?`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         guidedQuestions: [
-          "Step-by-step mathematical derivation",
-          "Common exam numericals on this topic",
+          `Make flashcards on this topic`,
+          `Generate a quiz on this topic`,
         ],
       };
       setMessages((prev) => [...prev, fallbackMsg]);
     } finally {
       setIsChatting(false);
-    }
-  };
-
-  // Generate Custom Quiz on student's topic
-  const handleGenerateCustomQuiz = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quizTopicInput.trim()) return;
-
-    setIsGeneratingQuiz(true);
-    try {
-      const res = await fetch("/api/ai/omni-route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "quiz",
-          subject: customSubject,
-          topic: quizTopicInput,
-          config: omniConfig,
-        }),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        setQuizQuestions(data.data);
-        setCurrentQuestionIndex(0);
-        setSelectedAnswers({});
-        setIsQuizSubmitted(false);
-        setQuizResult(null);
-      }
-    } catch (err) {
-      console.error("Generate quiz error:", err);
-    } finally {
-      setIsGeneratingQuiz(false);
     }
   };
 
@@ -268,7 +597,6 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
     setQuizResult(result);
     setIsQuizSubmitted(true);
 
-    // If score < 70%, automatically record as Weak Spot!
     if (percentage < 70) {
       const newWeakSpot: WeakSpotRecord = {
         id: `ws-${Date.now()}`,
@@ -288,37 +616,6 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
     }
   };
 
-  // Generate Custom Mind Map
-  const handleGenerateCustomMindMap = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mindMapTopicInput.trim()) return;
-
-    setIsGeneratingMindMap(true);
-    try {
-      const res = await fetch("/api/ai/omni-route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "mindmap",
-          subject: customSubject,
-          topic: mindMapTopicInput,
-          config: omniConfig,
-        }),
-      });
-      const data = await res.json();
-      if (data.success && data.data?.nodes) {
-        setMindMap(data.data);
-        setSelectedNodeId(data.data.nodes[0]?.id || "1");
-      }
-    } catch (err) {
-      console.error("Generate mindmap error:", err);
-    } finally {
-      setIsGeneratingMindMap(false);
-    }
-  };
-
-  const selectedNode = mindMap.nodes.find((n) => n.id === selectedNodeId);
-
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0b0f17] text-slate-100 overflow-hidden">
       {/* Top Header */}
@@ -329,15 +626,15 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
           </div>
           <div>
             <h1 className="text-xs font-semibold text-white">
-              Edu-Agent: Socratic Tutor &amp; Diagnostics
+              Edu-Agent: AI Tutor &amp; Workspace Controller
             </h1>
             <p className="text-[11px] text-slate-400">
-              Active inquiry, custom quizzes, and &lt;70% weak-spot tracking
+              Conversational app control, instant flashcards, quizzes, and Gemini web research
             </p>
           </div>
         </div>
 
-        {/* Controls */}
+        {/* Search Grounding status */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWebSearchEnabled(!webSearchEnabled)}
@@ -354,7 +651,7 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
         </div>
       </div>
 
-      {/* Minimal Sub Navigation Tabs */}
+      {/* Sub Navigation Tabs */}
       <div className="border-b border-slate-800 bg-[#0e131f] px-5 py-2 flex items-center gap-2 shrink-0">
         <button
           onClick={() => setActiveTab("tutor")}
@@ -365,7 +662,7 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
           }`}
         >
           <Bot className="w-3.5 h-3.5" />
-          <span>Socratic Tutor</span>
+          <span>Socratic Chat</span>
         </button>
 
         <button
@@ -412,99 +709,328 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
 
       {/* Main Tab Content */}
       <div className="flex-1 p-5 overflow-y-auto">
-        {/* TAB 1: Socratic AI Tutor */}
+        {/* TAB 1: Socratic AI Tutor with App Actions */}
         {activeTab === "tutor" && (
           <div className="max-w-3xl mx-auto flex flex-col h-full bg-[#111622] rounded-xl border border-slate-800 overflow-hidden shadow-sm">
             <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
               <span className="font-medium text-slate-300">
-                Socratic Guided Dialogue
+                AI Tutor &amp; Workspace Controller
               </span>
               <span className="text-[11px] text-slate-500">
-                {webSearchEnabled ? "Live Search Enabled" : "Offline"}
+                OmniRoute: Quizzes &amp; Flashcards • Gemini: Live Search
               </span>
             </div>
 
             <div className="flex-1 p-4 overflow-y-auto space-y-4">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex flex-col ${
-                    m.role === "user" ? "items-end" : "items-start"
-                  }`}
-                >
+              {messages.map((m) => {
+                const cardIndex = inlineCardIndices[m.id] || 0;
+                const isCardFlipped = inlineCardFlipped[m.id] || false;
+                const activeCard = m.flashcardsPayload?.[cardIndex];
+
+                return (
                   <div
-                    className={`max-w-[85%] p-3.5 rounded-xl text-xs leading-relaxed ${
-                      m.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-900 border border-slate-800 text-slate-200"
+                    key={m.id}
+                    className={`flex flex-col ${
+                      m.role === "user" ? "items-end" : "items-start"
                     }`}
                   >
-                    {/* DeepSeek Reasoning Chain-of-Thought */}
-                    {m.reasoningContent && (
-                      <div className="mb-2.5 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-300">
-                        <div className="flex items-center gap-1.5 font-medium text-blue-400 mb-1 text-[11px]">
-                          <Brain className="w-3 h-3" />
-                          <span>Chain-of-Thought Reasoning:</span>
+                    <div
+                      className={`max-w-[85%] p-3.5 rounded-xl text-xs leading-relaxed ${
+                        m.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-900 border border-slate-800 text-slate-200"
+                      }`}
+                    >
+                      {/* DeepSeek Reasoning Chain-of-Thought */}
+                      {m.reasoningContent && (
+                        <div className="mb-2.5 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-300">
+                          <div className="flex items-center gap-1.5 font-medium text-blue-400 mb-1 text-[11px]">
+                            <Brain className="w-3 h-3" />
+                            <span>Chain-of-Thought Reasoning:</span>
+                          </div>
+                          <div className="whitespace-pre-line font-mono text-[10px] text-slate-400 max-h-40 overflow-y-auto pl-2 border-l border-slate-700">
+                            {m.reasoningContent}
+                          </div>
                         </div>
-                        <div className="whitespace-pre-line font-mono text-[10px] text-slate-400 max-h-40 overflow-y-auto pl-2 border-l border-slate-700">
-                          {m.reasoningContent}
-                        </div>
-                      </div>
-                    )}
+                      )}
 
-                    <div className="whitespace-pre-line font-sans">{m.content}</div>
+                      <div className="whitespace-pre-line font-sans">{m.content}</div>
 
-                    {/* Web Sources Chips if used */}
-                    {m.webSources && m.webSources.length > 0 && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-800">
-                        <div className="text-[10px] font-medium text-blue-400 flex items-center gap-1 mb-1">
-                          <Globe className="w-3 h-3" />
-                          <span>Web Sources:</span>
+                      {/* INLINE FLASHCARD CAROUSEL (Created via chat) */}
+                      {m.actionType === "flashcards" && m.flashcardsPayload && m.flashcardsPayload.length > 0 && activeCard && (
+                        <div className="mt-3 p-3.5 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800/80 pb-1.5">
+                            <span className="font-semibold text-blue-400 flex items-center gap-1">
+                              <Layers className="w-3 h-3" />
+                              <span>Card {cardIndex + 1} of {m.flashcardsPayload.length}</span>
+                            </span>
+                            <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
+                              {activeCard.category || "Concept"}
+                            </span>
+                          </div>
+
+                          <div
+                            onClick={() =>
+                              setInlineCardFlipped((prev) => ({
+                                ...prev,
+                                [m.id]: !isCardFlipped,
+                              }))
+                            }
+                            className="p-3 rounded-md bg-slate-900 border border-slate-800/80 cursor-pointer min-h-[90px] flex flex-col justify-center text-center transition-colors hover:border-slate-700"
+                          >
+                            {!isCardFlipped ? (
+                              <div>
+                                <span className="text-[10px] uppercase text-slate-500 font-semibold block mb-1">
+                                  Front (Click to Flip)
+                                </span>
+                                <div className="text-xs font-medium text-slate-200">
+                                  {activeCard.front}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="text-[10px] uppercase text-blue-400 font-semibold block mb-1">
+                                  Back (Explanation)
+                                </span>
+                                <div className="text-xs text-slate-300 leading-relaxed text-left whitespace-pre-line">
+                                  {activeCard.back}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setInlineCardFlipped((p) => ({ ...p, [m.id]: false }));
+                                  setInlineCardIndices((p) => ({
+                                    ...p,
+                                    [m.id]: (cardIndex - 1 + (m.flashcardsPayload?.length || 1)) % (m.flashcardsPayload?.length || 1),
+                                  }));
+                                }}
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
+                              >
+                                &lt; Prev
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setInlineCardFlipped((p) => ({ ...p, [m.id]: false }));
+                                  setInlineCardIndices((p) => ({
+                                    ...p,
+                                    [m.id]: (cardIndex + 1) % (m.flashcardsPayload?.length || 1),
+                                  }));
+                                }}
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
+                              >
+                                Next &gt;
+                              </button>
+                            </div>
+
+                            {onNavigate && (
+                              <button
+                                onClick={() => onNavigate("flashcards")}
+                                className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Open in Flashcards</span>
+                                <ArrowRight className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-col gap-1">
-                          {m.webSources.slice(0, 2).map((s, idx) => (
-                            <a
-                              key={idx}
-                              href={s.uri}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-slate-400 hover:text-blue-400 flex items-center gap-1 transition-colors"
-                            >
-                              <span>• {s.title}</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
-                          ))}
+                      )}
+
+                      {/* INLINE QUIZ WIDGET (Created via chat) */}
+                      {m.actionType === "quiz" && m.quizPayload && m.quizPayload.length > 0 && (
+                        <div className="mt-3 p-3.5 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800/80 pb-1.5">
+                            <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                              <BookOpen className="w-3 h-3" />
+                              <span>Sample Quiz Question</span>
+                            </span>
+                            {onNavigate && (
+                              <button
+                                onClick={() => setActiveTab("quiz")}
+                                className="text-[10px] text-blue-400 hover:underline cursor-pointer"
+                              >
+                                Take Full Quiz &gt;
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-slate-200 font-medium">
+                            {m.quizPayload[0]?.question}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {m.quizPayload[0]?.options.map((opt, oIdx) => {
+                              const chosen = inlineQuizAnswers[m.id]?.[0];
+                              const isSelected = chosen === oIdx;
+                              const isSubmitted = inlineQuizSubmitted[m.id];
+                              const isCorrect = oIdx === m.quizPayload?.[0]?.correctIndex;
+
+                              let btnStyle = "bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700";
+                              if (isSubmitted) {
+                                if (isCorrect) btnStyle = "bg-emerald-950/60 border-emerald-700 text-emerald-300";
+                                else if (isSelected) btnStyle = "bg-rose-950/60 border-rose-700 text-rose-300";
+                              } else if (isSelected) {
+                                btnStyle = "bg-blue-600/20 border-blue-500 text-white";
+                              }
+
+                              return (
+                                <button
+                                  key={oIdx}
+                                  onClick={() => {
+                                    setInlineQuizAnswers((prev) => ({
+                                      ...prev,
+                                      [m.id]: { ...(prev[m.id] || {}), 0: oIdx },
+                                    }));
+                                    setInlineQuizSubmitted((prev) => ({
+                                      ...prev,
+                                      [m.id]: true,
+                                    }));
+                                  }}
+                                  className={`w-full px-2.5 py-1.5 rounded-md text-left text-xs border transition-colors cursor-pointer flex items-center justify-between ${btnStyle}`}
+                                >
+                                  <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
+                                  {isSubmitted && isCorrect && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {inlineQuizSubmitted[m.id] && m.quizPayload[0]?.explanation && (
+                            <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                              <strong>Explanation:</strong> {m.quizPayload[0].explanation}
+                            </p>
+                          )}
                         </div>
+                      )}
+
+                      {/* INLINE ACTION BUTTONS for Note, MindMap, and Diagnostics */}
+                      {m.actionType === "note_created" && onNavigate && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">Note added to your study records</span>
+                          <button
+                            onClick={() => onNavigate("notebook")}
+                            className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Open in My Notebooks</span>
+                            <ArrowRight className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {m.actionType === "mindmap" && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">Knowledge graph generated</span>
+                          <button
+                            onClick={() => setActiveTab("mindmap")}
+                            className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>View Full Mind Map</span>
+                            <ArrowRight className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {m.actionType === "weakspots" && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">Targeted diagnostic analysis</span>
+                          <button
+                            onClick={() => setActiveTab("weakspots")}
+                            className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Open Weak Spots Tab</span>
+                            <ArrowRight className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Web Sources Chips if used */}
+                      {m.webSources && m.webSources.length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800">
+                          <div className="text-[10px] font-medium text-blue-400 flex items-center gap-1 mb-1">
+                            <Globe className="w-3 h-3" />
+                            <span>Live Web Sources (Gemini Search Grounding):</span>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            {m.webSources.slice(0, 3).map((s, idx) => (
+                              <a
+                                key={idx}
+                                href={s.uri}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-slate-400 hover:text-blue-400 flex items-center gap-1 transition-colors"
+                              >
+                                <span>• {s.title}</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {m.guidedQuestions && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {m.guidedQuestions.map((q, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSendMessage(q)}
+                            className="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition-colors cursor-pointer flex items-center gap-1.5"
+                          >
+                            <HelpCircle className="w-3 h-3 text-slate-400" />
+                            <span>{q}</span>
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
-
-                  {m.guidedQuestions && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {m.guidedQuestions.map((q, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleSendMessage(q)}
-                          className="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition-colors cursor-pointer flex items-center gap-1.5"
-                        >
-                          <HelpCircle className="w-3 h-3 text-slate-400" />
-                          <span>{q}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               {isChatting && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400 w-fit">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
-                  <span>Formulating Socratic guidance...</span>
+                  <span>Processing workspace command...</span>
                 </div>
               )}
             </div>
 
-            <div className="p-3 border-t border-slate-800 bg-[#0e131f]">
+            {/* Quick Action Chips & Input Bar */}
+            <div className="p-3 border-t border-slate-800 bg-[#0e131f] space-y-2">
+              <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Make 5 flashcards on Carnot cycle")}
+                  className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
+                >
+                  ⚡ Make Flashcards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Generate a quiz on thermodynamics")}
+                  className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
+                >
+                  📝 Generate Quiz
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Create a mind map on electromagnetic induction")}
+                  className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
+                >
+                  🧠 Mind Map
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("What are the latest cryogenic heat engine breakthroughs?")}
+                  className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 whitespace-nowrap cursor-pointer"
+                >
+                  🌐 Web Search
+                </button>
+              </div>
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -516,7 +1042,7 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
                   type="text"
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
-                  placeholder="Ask a question or request a derivation (e.g. Carnot efficiency, Lenz's law)..."
+                  placeholder="Ask a question or type 'Make flashcards on...', 'Generate a quiz on...'..."
                   className="flex-1 px-3.5 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                 />
                 <button
@@ -532,50 +1058,22 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
           </div>
         )}
 
-        {/* TAB 2: Generate & Take Quiz */}
+        {/* TAB 2: Practice Quiz */}
         {activeTab === "quiz" && (
           <div className="max-w-2xl mx-auto space-y-4">
-            <form
-              onSubmit={handleGenerateCustomQuiz}
-              className="p-3.5 rounded-xl bg-[#111622] border border-slate-800 flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={quizTopicInput}
-                onChange={(e) => setQuizTopicInput(e.target.value)}
-                placeholder="Enter topic: e.g. Quantum Physics, Organic Reactions, Matrices..."
-                className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
-              />
-              <button
-                type="submit"
-                disabled={isGeneratingQuiz || !quizTopicInput.trim()}
-                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 shrink-0"
-              >
-                {isGeneratingQuiz ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Generate Quiz</span>
-                  </>
-                )}
-              </button>
-            </form>
+            <div className="p-3.5 rounded-xl bg-[#111622] border border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-300">
+                Generated via <strong>OmniRoute AI Gateway</strong>
+              </span>
+              <span className="text-slate-500">Topic: {quizTopicInput}</span>
+            </div>
 
             {!isQuizSubmitted ? (
-              <div className="p-5 rounded-xl bg-[#111622] border border-slate-800 space-y-5">
+              <div className="p-5 rounded-xl bg-[#111622] border border-slate-800 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                      Topic: {quizTopicInput}
-                    </span>
-                    <h2 className="text-xs font-semibold text-white mt-1">
-                      Question {currentQuestionIndex + 1} of {quizQuestions.length}
-                    </h2>
-                  </div>
+                  <h2 className="text-xs font-semibold text-white">
+                    Question {currentQuestionIndex + 1} of {quizQuestions.length}
+                  </h2>
                   <span className="text-xs text-slate-400 font-mono">
                     {quizQuestions[currentQuestionIndex]?.difficulty}
                   </span>
@@ -597,13 +1095,13 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
                             [currentQuestionIndex]: oIdx,
                           }))
                         }
-                        className={`w-full p-3 rounded-lg text-left text-xs font-medium border transition-colors cursor-pointer flex items-center justify-between ${
+                        className={`w-full p-2.5 rounded-lg text-left text-xs font-medium border transition-colors cursor-pointer flex items-center justify-between ${
                           isSelected
                             ? "bg-blue-600/20 border-blue-500 text-white"
                             : "bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700"
                         }`}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2">
                           <span
                             className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
                               isSelected
@@ -647,13 +1145,9 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
                 </div>
               </div>
             ) : (
-              // Results Screen
               <div className="p-5 rounded-xl bg-[#111622] border border-slate-800 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">Quiz Score</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Topic: {quizTopicInput}</p>
-                  </div>
+                  <h3 className="text-sm font-semibold text-white">Quiz Score</h3>
                   <div
                     className={`text-base font-bold px-3 py-1 rounded-lg ${
                       (quizResult?.percentage || 0) >= 70
@@ -669,7 +1163,7 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
                   You scored {quizResult?.score} out of {quizResult?.totalQuestions} questions.
                   {(quizResult?.percentage || 0) < 70 && (
                     <span className="block text-rose-400 mt-1">
-                      ⚠️ Score is under 70%. Automatically tracked in your Weak Spots tab for guided remediation.
+                      ⚠️ Score is under 70%. Saved to your Weak Spots tab for review.
                     </span>
                   )}
                 </p>
@@ -740,36 +1234,6 @@ export default function EduAgentView({ omniConfig }: EduAgentViewProps) {
         {/* TAB 4: Mind Map */}
         {activeTab === "mindmap" && (
           <div className="max-w-2xl mx-auto space-y-4">
-            <form
-              onSubmit={handleGenerateCustomMindMap}
-              className="p-3.5 rounded-xl bg-[#111622] border border-slate-800 flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={mindMapTopicInput}
-                onChange={(e) => setMindMapTopicInput(e.target.value)}
-                placeholder="Topic for concept knowledge graph..."
-                className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
-              />
-              <button
-                type="submit"
-                disabled={isGeneratingMindMap || !mindMapTopicInput.trim()}
-                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 shrink-0"
-              >
-                {isGeneratingMindMap ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Mapping...</span>
-                  </>
-                ) : (
-                  <>
-                    <Brain className="w-3.5 h-3.5" />
-                    <span>Map Concepts</span>
-                  </>
-                )}
-              </button>
-            </form>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {mindMap.nodes.map((node) => (
                 <div

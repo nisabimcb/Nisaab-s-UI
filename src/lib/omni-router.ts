@@ -180,20 +180,63 @@ export async function processOmniRoute(
     }
   }
 
-  // 2. Try executing with selected Omni-Route provider
-  try {
-    if (provider === 'omniroute') {
+  // 2. Intelligent Auto-Routing (Zero Setting-Toggling)
+  // A: Structured App Tasks (quizzes, flashcards, mind maps, briefs) -> OmniRoute Gateway
+  const isStructuredAppTask = ['quiz', 'flashcards', 'mindmap', 'synthesize', 'audio_script'].includes(request.action);
+
+  // B: Out-of-the-box or external questions ("out of the uploadations") -> Google Gemini with Google Search Grounding
+  const isOutOfUpload = isOutOfUploadations(request.userMessage, request.context);
+  const isOutOfContextOrWeb =
+    request.action === 'chat' &&
+    (isOutOfUpload ||
+      request.userMessage?.toLowerCase().includes('search') ||
+      request.userMessage?.toLowerCase().includes('web') ||
+      request.userMessage?.toLowerCase().includes('latest') ||
+      enableWebSearch);
+
+  if (isStructuredAppTask) {
+    // Route structured generation to OmniRoute Gateway models
+    try {
       return await executeWithOmniRoute(request, omniRouteUrl, omniRouteApiKey, omniRouteModel, startTime);
-    } else if (provider === 'deepseek' && deepseekApiKey) {
-      return await executeWithDeepSeek(request, deepseekApiKey, deepseekModel, startTime);
-    } else if (provider === 'gemini' && geminiApiKey) {
-      return await executeWithGemini(request, geminiApiKey, enableWebSearch, startTime);
+    } catch (err) {
+      console.warn('[OmniRouter] OmniRoute gateway failed for structured generation, falling back:', err);
+      if (deepseekApiKey) {
+        try {
+          return await executeWithDeepSeek(request, deepseekApiKey, deepseekModel, startTime);
+        } catch {}
+      }
+      return executeWithDynamicFallback(request, startTime);
     }
-  } catch (err) {
-    console.warn(`[OmniRouter] Provider ${provider} failed, using Student Fallback:`, err);
   }
 
-  // 3. Dynamic User-Driven Fallback Engine
+  if (isOutOfContextOrWeb && geminiApiKey) {
+    // Out-of-the-box query: Gemini answers it with Google Search Grounding without needing to change settings
+    try {
+      return await executeWithGemini(request, geminiApiKey, true, startTime);
+    } catch (err) {
+      console.warn('[OmniRouter] Gemini out-of-the-box query failed, routing to OmniRoute:', err);
+      try {
+        return await executeWithOmniRoute(request, omniRouteUrl, omniRouteApiKey, omniRouteModel, startTime);
+      } catch {}
+      return executeWithDynamicFallback(request, startTime);
+    }
+  }
+
+  // 3. Configured Provider Execution with graceful fallback
+  try {
+    const configured = request.config?.provider || 'omniroute';
+    if (configured === 'omniroute') {
+      return await executeWithOmniRoute(request, omniRouteUrl, omniRouteApiKey, omniRouteModel, startTime);
+    } else if (configured === 'gemini' && geminiApiKey) {
+      return await executeWithGemini(request, geminiApiKey, enableWebSearch, startTime);
+    } else if (configured === 'deepseek' && deepseekApiKey) {
+      return await executeWithDeepSeek(request, deepseekApiKey, deepseekModel, startTime);
+    }
+  } catch (err) {
+    console.warn(`[OmniRouter] Execution failed, using Student Fallback:`, err);
+  }
+
+  // 4. Dynamic User-Driven Fallback Engine
   return executeWithDynamicFallback(request, startTime);
 }
 
@@ -1173,3 +1216,31 @@ function cleanAndParseJSON<T>(rawText: string, fallback: T): T {
     return fallback;
   }
 }
+
+// -------------------------------------------------------------
+// Helper: Detect if Query is Outside Uploaded Notes ("Out of the Uploadations")
+// -------------------------------------------------------------
+function isOutOfUploadations(userMsg?: string, context?: string): boolean {
+  if (!context || context.trim().length < 40) return true;
+  if (!userMsg) return false;
+
+  const lowerMsg = userMsg.toLowerCase();
+  const searchSignals = [
+    'search', 'web', 'latest', 'recent', 'who', 'when was', 'news', 'paper', 'discovery',
+    'real world', 'outside', 'out of the box', 'unrelated', 'general', 'current', 'novel'
+  ];
+  if (searchSignals.some((sig) => lowerMsg.includes(sig))) return true;
+
+  // Extract content words
+  const words = lowerMsg
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !['what', 'when', 'where', 'which', 'explain', 'describe', 'tell', 'show', 'about', 'this', 'that', 'with', 'from', 'have', 'does', 'give', 'make', 'help'].includes(w));
+
+  if (words.length === 0) return false;
+  const lowerCtx = context.toLowerCase();
+  const matches = words.filter((w) => lowerCtx.includes(w)).length;
+  // If less than 25% of query words match the uploaded note, it is outside uploaded notes!
+  return (matches / words.length) < 0.25;
+}
+

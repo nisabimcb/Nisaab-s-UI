@@ -64,6 +64,9 @@ export interface SocraticMessage {
   webSources?: WebSearchSource[];
   timestamp: string;
   guidedQuestions?: string[];
+  actionType?: 'flashcards' | 'quiz' | 'mindmap' | 'note_created' | 'weakspots';
+  flashcardsPayload?: Flashcard[];
+  quizPayload?: QuizQuestion[];
 }
 
 export interface QuizQuestion {
