@@ -394,10 +394,18 @@ async function executeWithGemini(
       personaGuidance = 'You are Copilot in Essay & Homework Reviewer mode. Analyze structure, argument flow, originality, and clarity.';
     }
 
+    const historyBlock =
+      request.history && request.history.length > 0
+        ? `\nPrior Multi-Turn Conversation History (seamlessly maintain context and address follow-ups):\n${request.history
+            .slice(-6)
+            .map((h) => `${h.role === 'user' ? 'Student' : 'Copilot'}: ${h.content}`)
+            .join('\n')}\n`
+        : '';
+
     const prompt = `${personaGuidance}
 Subject: ${subject}
 Topic context: "${topic}"
-${request.context ? `Uploaded Notes Context:\n"""${request.context.slice(0, 3000)}"""\n` : ''}
+${request.context ? `Uploaded Notes Context:\n"""${request.context.slice(0, 3000)}"""\n` : ''}${historyBlock}
 Student Query: "${request.userMessage || 'Explain this topic'}"
 
 Instructions:
@@ -439,25 +447,29 @@ Instructions:
     };
   }
 
-  // 2. QUIZ GENERATION (Dynamic for ANY topic!)
+  // 2. QUIZ GENERATION (Dynamic for ANY topic with Bloom's Taxonomy Tiers!)
   if (request.action === 'quiz') {
     const count = request.count || 5;
     const prompt = `Generate ${count} high-quality, authentic multiple-choice examination questions on "${topic}" in "${subject}".
-Include a balanced mix of Conceptual, Application, and Analytical questions.
+Implement a balanced pedagogical distribution across Bloom's Taxonomy tiers:
+- Tier 1 (Conceptual): Foundational definitions, first principles, and core recall.
+- Tier 2 (Application): Quantitative calculations, real-world scenarios, and method selection.
+- Tier 3 (Analytical): Subtle edge cases, common student misconception traps, and multi-step synthesis.
 ${request.context ? `Base questions on this study context where applicable:\n"""${request.context.slice(0, 2500)}"""\n` : ''}
 
 You MUST return ONLY a valid JSON array of objects matching this exact schema:
 [
   {
     "id": "q1",
-    "question": "Question text here",
+    "question": "Question text here (use LaTeX for math/physics if needed)",
     "options": ["Option A", "Option B", "Option C", "Option D"],
     "correctIndex": 0,
-    "explanation": "Clear, informative explanation of why this answer is correct",
+    "explanation": "Clear, informative explanation of why this answer is correct and why other choices are distractors",
     "sloReference": "${topic} - Core Examination Standard",
     "difficulty": "Application"
   }
-]`;
+]
+Note: "difficulty" MUST strictly be one of: "Conceptual", "Application", "Analytical".`;
 
     const result = await callWithTimeout(prompt, false);
     const parsed = cleanAndParseJSON<QuizQuestion[]>(result.text || '', []);
@@ -996,6 +1008,8 @@ async function executeWithDeepSeek(
   if (request.action === 'quiz') {
     const count = request.count || 5;
     userPrompt = `Generate ${count} authentic multiple-choice questions on "${topic}" in "${subject}".
+Include a balanced pedagogical distribution across Bloom's Taxonomy tiers (Conceptual, Application, Analytical).
+${request.context ? `Base questions on this study context where applicable:\n"""${request.context.slice(0, 2500)}"""\n` : ''}
 Return ONLY a valid JSON array:
 [
   {
@@ -1003,11 +1017,12 @@ Return ONLY a valid JSON array:
     "question": "Question text",
     "options": ["Opt A", "Opt B", "Opt C", "Opt D"],
     "correctIndex": 0,
-    "explanation": "Explanation",
+    "explanation": "Detailed explanation of correct answer and distractor rationale",
     "sloReference": "${topic}",
-    "difficulty": "Application"
+    "difficulty": "Conceptual"
   }
-]`;
+]
+Note: "difficulty" must be strictly one of: "Conceptual", "Application", "Analytical".`;
   } else if (request.action === 'flashcards') {
     const count = request.count || 6;
     userPrompt = `Generate ${count} active recall flashcards on "${topic}" in "${subject}".
@@ -1049,6 +1064,10 @@ Return ONLY JSON:
       model: model || 'deepseek-chat',
       messages: [
         { role: 'system', content: systemPrompt },
+        ...(request.history?.slice(-6).map((h) => ({
+          role: (h.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+          content: h.content,
+        })) || []),
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.3,

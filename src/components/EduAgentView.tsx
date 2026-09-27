@@ -23,6 +23,7 @@ import {
   Play,
   Pause,
   Volume2,
+  MessageSquare,
 } from "lucide-react";
 import {
   SocraticMessage,
@@ -581,34 +582,73 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       return;
     }
 
-    // Helper to extract student's uploaded notes & relevant formulas
-    const getNotebookNotesData = (topicQuery?: string) => {
+    // Helper to extract student's uploaded notes & relevant formulas across multiple documents (Multi-Doc RAG)
+    const getNotebookNotesData = (topicQuery?: string, maxDocs: number = 3) => {
       let noteContext = "";
       let foundTitle = "";
       let foundEquation = "";
+      let matchedTitles: string[] = [];
       try {
         if (typeof window !== "undefined") {
           const saved = localStorage.getItem("student_notebook_docs");
           if (saved) {
             const docs = JSON.parse(saved);
             if (Array.isArray(docs) && docs.length > 0) {
-              let matched = docs[0];
-              if (topicQuery && topicQuery.length > 2) {
-                const words = topicQuery.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-                const found = docs.find((d: any) => {
-                  const t = (d.title || "").toLowerCase();
-                  const c = (d.content || "").toLowerCase();
-                  return words.some((w) => t.includes(w) || c.includes(w));
-                });
-                if (found) matched = found;
-              }
-              foundTitle = matched.title || "";
-              noteContext = `Note Title: ${matched.title}\nSubject: ${matched.subject || customSubject}\nChapter: ${matched.chapter || "Study Material"}\nContent:\n${matched.content || ""}`;
+              const stopWords = new Set(["what", "when", "where", "which", "explain", "describe", "tell", "show", "about", "this", "that", "with", "from", "have", "does", "give", "make", "help", "please", "can", "you", "for", "the", "and"]);
+              const queryTokens = (topicQuery || "")
+                .toLowerCase()
+                .replace(/[^\w\s]/g, " ")
+                .split(/\s+/)
+                .filter((w) => w.length > 2 && !stopWords.has(w));
 
-              // Extract potential equation if present in content
-              const eqMatch = (matched.content || "").match(/([a-zA-Z0-9\^_\+\-\*/\(\)\s=]{4,40}=\s*[0-9a-zA-Z\^_\+\-\*/\(\)]+)/);
-              if (eqMatch) {
-                foundEquation = eqMatch[1].trim();
+              // Score each document by relevance
+              const scoredDocs = docs.map((doc: any) => {
+                const titleLower = (doc.title || "").toLowerCase();
+                const chapterLower = (doc.chapter || "").toLowerCase();
+                const subjectLower = (doc.subject || "").toLowerCase();
+                const contentLower = (doc.content || "").toLowerCase();
+
+                let score = 0;
+                if (queryTokens.length > 0) {
+                  queryTokens.forEach((token) => {
+                    if (titleLower.includes(token)) score += 8;
+                    if (chapterLower.includes(token)) score += 5;
+                    if (subjectLower.includes(token)) score += 3;
+                    const matches = contentLower.split(token).length - 1;
+                    score += Math.min(matches * 1.5, 12);
+                  });
+                  const matchedTokensCount = queryTokens.filter((t) => titleLower.includes(t) || contentLower.includes(t)).length;
+                  if (matchedTokensCount > 1) {
+                    score += matchedTokensCount * 4;
+                  }
+                } else {
+                  score = 1;
+                }
+                return { doc, score };
+              });
+
+              scoredDocs.sort((a, b) => b.score - a.score);
+              const topMatches = scoredDocs.filter((d) => d.score > 0).slice(0, maxDocs);
+              const selectedDocs = topMatches.length > 0 ? topMatches.map((d) => d.doc) : [docs[0]];
+
+              matchedTitles = selectedDocs.map((d) => d.title || "Study Notes");
+              foundTitle = matchedTitles[0] || "";
+
+              // Format multi-source context with clear citations
+              noteContext = selectedDocs
+                .map((doc, idx) => {
+                  const excerpt = (doc.content || "").slice(0, 1600);
+                  return `[Source Document ${idx + 1}: "${doc.title}" | Subject: ${doc.subject || customSubject} | Chapter: ${doc.chapter || "Study Material"}]\n${excerpt}`;
+                })
+                .join("\n\n---\n\n");
+
+              // Extract potential equation if present in any matched documents
+              for (const doc of selectedDocs) {
+                const eqMatch = (doc.content || "").match(/([a-zA-Z0-9\^_\+\-\*/\(\)\s=]{4,40}=\s*[0-9a-zA-Z\^_\+\-\*/\(\)]+)/);
+                if (eqMatch) {
+                  foundEquation = eqMatch[1].trim();
+                  break;
+                }
               }
             }
           }
@@ -616,7 +656,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       } catch (e) {
         console.error("Error reading notebook docs:", e);
       }
-      return { noteContext, foundTitle, foundEquation };
+      return { noteContext, foundTitle, foundEquation, matchedTitles };
     };
 
     // Parse count signals
@@ -996,46 +1036,12 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
       }
 
       // 6. Copilot Intelligent Query Routing
-      // Checks data and content in notebooks:
-      // If content is found -> OmniRoute answers from uploaded notebook notes
-      // If content is NOT found -> Gemini activates, searches the live web, and answers that!
-      let noteContext = "";
-      let hasMatchingNotebook = false;
-      try {
-        const saved = localStorage.getItem("student_notebook_docs");
-        if (saved) {
-          const docs = JSON.parse(saved);
-          if (Array.isArray(docs) && docs.length > 0) {
-            const queryWords = lower
-              .replace(/[^\w\s]/g, " ")
-              .split(/\s+/)
-              .filter((w: string) => w.length > 3 && !["what", "when", "where", "which", "explain", "describe", "tell", "show", "about", "this", "that", "with", "from", "have", "does", "give", "make", "help"].includes(w));
-
-            const matchingDoc = docs.find((d: any) => {
-              if (!d) return false;
-              const titleLower = (d.title || "").toLowerCase();
-              const chapterLower = (d.chapter || "").toLowerCase();
-              const contentLower = (d.content || "").toLowerCase();
-
-              const titleMatch = queryWords.some((w: string) => titleLower.includes(w) || chapterLower.includes(w));
-              if (titleMatch) return true;
-
-              if (queryWords.length >= 2) {
-                const matchedWords = queryWords.filter((w: string) => contentLower.includes(w));
-                return matchedWords.length >= 2;
-              } else if (queryWords.length === 1) {
-                return contentLower.includes(queryWords[0]);
-              }
-              return false;
-            });
-
-            if (matchingDoc) {
-              hasMatchingNotebook = true;
-              noteContext = `Note Title: ${matchingDoc.title}\nSubject: ${matchingDoc.subject}\nChapter: ${matchingDoc.chapter || "Study Material"}\nContent:\n${matchingDoc.content}`;
-            }
-          }
-        }
-      } catch {}
+      // Checks multi-document semantic RAG across uploaded notes and PDFs:
+      // If content is found -> OmniRoute grounds answer in multi-source notebook context with citations
+      // If content is NOT found -> Gemini activates web search and external academic grounding
+      const { noteContext: multiDocContext, matchedTitles } = getNotebookNotesData(rawText, 4);
+      const noteContext = multiDocContext;
+      const hasMatchingNotebook = !!(multiDocContext && multiDocContext.trim().length > 10);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -1049,6 +1055,7 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
           userMessage: rawText,
           context: noteContext,
           persona,
+          history: messages.slice(-8),
           source: hasMatchingNotebook ? "uploaded" : "outside",
           config: {
             ...omniConfig,
@@ -1519,6 +1526,27 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
                                         ...prev,
                                         [m.id]: true,
                                       }));
+
+                                      // Auto-record weak spot diagnostic if incorrect answer
+                                      if (oIdx !== currentQ.correctIndex) {
+                                        const topicLabel = m.promptTopic || customSubject || "Academic Study";
+                                        const cleanQ = currentQ.question.replace(/\$+/g, '').slice(0, 50);
+                                        const newWeakSpot: WeakSpotRecord = {
+                                          id: `ws-${Date.now()}`,
+                                          subject: customSubject,
+                                          topic: `${topicLabel} (${cleanQ}...)`,
+                                          chapter: currentQ.sloReference || "Diagnostic Quiz",
+                                          masteryPercentage: 50,
+                                          status: "critical",
+                                          lastAssessed: new Date().toISOString(),
+                                          prescribedRemediation: [
+                                            `Explanation: ${currentQ.explanation.slice(0, 95)}...`,
+                                            `Correct answer is: ${currentQ.options[currentQ.correctIndex]}`,
+                                            "Practice 3 targeted remediation questions with Copilot.",
+                                          ],
+                                        };
+                                        saveWeakSpots([newWeakSpot, ...weakSpots.filter(s => s.topic !== newWeakSpot.topic)]);
+                                      }
                                     }}
                                     className={`w-full px-2.5 py-1.5 rounded-md text-left text-xs border transition-colors cursor-pointer flex items-center justify-between ${btnStyle}`}
                                   >
@@ -2075,6 +2103,29 @@ export default function EduAgentView({ omniConfig, onNavigate }: EduAgentViewPro
                       <span>{tip}</span>
                     </div>
                   ))}
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+                  <button
+                    onClick={() => {
+                      setActiveTab("tutor");
+                      handleSendMessage(`Generate a 5-question targeted remediation quiz on ${ws.topic}`);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-[11px] font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3 text-rose-400" />
+                    <span>Practice Remediation Quiz</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab("tutor");
+                      handleSendMessage(`Explain the fundamental concepts and common examination traps of ${ws.topic} to help fix my weak spots`);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <MessageSquare className="w-3 h-3 text-blue-400" />
+                    <span>Ask Copilot to Explain</span>
+                  </button>
                 </div>
               </div>
             ))}
