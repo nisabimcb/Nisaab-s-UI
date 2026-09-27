@@ -6,6 +6,8 @@ import Sidebar from "@/components/Sidebar";
 import OpenNotebookView from "@/components/OpenNotebookView";
 import EduAgentView from "@/components/EduAgentView";
 import FlashcardsView from "@/components/FlashcardsView";
+import AcademicToolsView from "@/components/AcademicToolsView";
+import VisionMathView from "@/components/VisionMathView";
 import SettingsView from "@/components/SettingsView";
 import ToastContainer from "@/components/ToastContainer";
 import { ToastMessage } from "@/types/student";
@@ -15,7 +17,7 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<string>("notebook");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [omniConfig, setOmniConfig] = useState<OmniRouteConfig>({
-    provider: "omniroute",
+    provider: "gemini",
     omniRouteUrl: "http://localhost:20128/v1",
     omniRouteApiKey: "",
     omniRouteModel: "deepseek-chat",
@@ -53,6 +55,8 @@ export default function Home() {
           setCurrentView("tutor");
         } else if (query.includes("view=flashcards")) {
           setCurrentView("flashcards");
+        } else if (query.includes("view=tools")) {
+          setCurrentView("tools");
         } else if (query.includes("view=settings")) {
           setCurrentView("settings");
         }
@@ -63,7 +67,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0b0f17] text-slate-100">
+    <div className="min-h-screen flex flex-col bg-[#09090b] text-zinc-100">
       <div className="flex flex-col h-screen overflow-hidden">
         {/* Student App Header */}
         <AppHeader
@@ -81,7 +85,7 @@ export default function Home() {
           />
 
           {/* Main Workstation Body */}
-          <main className="flex-1 flex flex-col overflow-hidden bg-[#0b0f17]">
+          <main className="flex-1 flex flex-col overflow-hidden bg-[#09090b]">
             {currentView === "notebook" && (
               <OpenNotebookView omniConfig={omniConfig} />
             )}
@@ -92,6 +96,22 @@ export default function Home() {
 
             {currentView === "flashcards" && (
               <FlashcardsView omniConfig={omniConfig} />
+            )}
+
+            {currentView === "vision" && (
+              <VisionMathView
+                omniConfig={omniConfig}
+                onNavigateToCopilot={(prompt) => {
+                  setCurrentView("tutor");
+                }}
+                onNavigateToFlashcards={() => {
+                  setCurrentView("flashcards");
+                }}
+              />
+            )}
+
+            {currentView === "tools" && (
+              <AcademicToolsView omniConfig={omniConfig} onNavigate={setCurrentView} />
             )}
 
             {currentView === "settings" && (

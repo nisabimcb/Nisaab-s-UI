@@ -55,6 +55,51 @@ export interface AudioPodcastEpisode {
   dialogue: AudioPodcastSpeaker[];
 }
 
+export type AgentPersona = 'tutor' | 'explainer' | 'examiner' | 'math' | 'reviewer' | 'lecture';
+
+export interface MathStep {
+  stepNumber: number;
+  title: string;
+  derivation: string;
+  explanation: string;
+}
+
+export interface MathSolution {
+  problem: string;
+  topic: string;
+  subject: string;
+  latex?: string;
+  steps: MathStep[];
+  finalAnswer: string;
+  keyFormulas?: string[];
+  verification?: string;
+  studentMistakeDetected?: string;
+}
+
+export interface EssayReview {
+  title: string;
+  originalityScore: number; // 0 to 100
+  similarityIndex: number; // 0 to 100
+  wordCount: number;
+  thesisClarity: string;
+  academicTone: string;
+  strengths: string[];
+  areasForImprovement: string[];
+  potentialMatches: {
+    snippet: string;
+    potentialSource: string;
+    reason: string;
+  }[];
+}
+
+export interface StudyMemo {
+  id: string;
+  content: string;
+  tag: string;
+  timestamp: string;
+  date: string;
+}
+
 export interface SocraticMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -64,9 +109,15 @@ export interface SocraticMessage {
   webSources?: WebSearchSource[];
   timestamp: string;
   guidedQuestions?: string[];
-  actionType?: 'flashcards' | 'quiz' | 'mindmap' | 'note_created' | 'weakspots';
+  actionType?: 'flashcards' | 'quiz' | 'mindmap' | 'note_created' | 'weakspots' | 'math_solution' | 'essay_review' | 'podcast';
   flashcardsPayload?: Flashcard[];
   quizPayload?: QuizQuestion[];
+  mathPayload?: MathSolution;
+  essayPayload?: EssayReview;
+  audioPayload?: AudioPodcastEpisode;
+  mindmapPayload?: MindMapData;
+  promptType?: 'quiz_config' | 'flashcards_config' | 'math_prompt' | 'essay_prompt';
+  promptTopic?: string;
 }
 
 export interface QuizQuestion {
@@ -133,28 +184,58 @@ export interface Flashcard {
   category?: string;
   subject: string;
   status: 'new' | 'learning' | 'mastered';
+  // FSRS / Spaced Repetition (Nibomo inspiration)
+  intervalDays?: number;
+  easeFactor?: number;
+  reviewCount?: number;
+  nextReviewDate?: string;
 }
 
-export type AIProvider = 'omniroute' | 'gemini' | 'deepseek' | 'dual_model' | 'demo_fallback';
+export type AIProvider = 'gemini' | 'deepseek' | 'omniroute' | 'dual_model' | 'demo_fallback' | 'python_sympy' | 'python_vision_sympy' | 'python_backend';
 
 export interface OmniRouteConfig {
   provider: AIProvider;
 
-  // OmniRoute Gateway (https://github.com/diegosouzapw/OmniRoute)
-  omniRouteUrl: string; // e.g. "http://localhost:20128/v1"
-  omniRouteApiKey?: string;
-  omniRouteModel: string; // e.g. "deepseek-chat", "deepseek-reasoner", "gemini-2.5-flash"
-
-  // Direct Provider Keys
+  // Direct Provider Keys (Gemini Primary, DeepSeek Alternate)
   geminiApiKey: string;
   deepseekApiKey: string;
   deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
 
+  // OmniRoute Gateway (optional local proxy)
+  omniRouteUrl: string; // e.g. "http://localhost:20128/v1"
+  omniRouteApiKey?: string;
+  omniRouteModel: string;
+
   enableWebSearch: boolean;
 }
 
+export interface VisionMathResult {
+  transcribedExpression: string;
+  latex: string;
+  problemType: string;
+  steps: MathStep[];
+  finalAnswer: string;
+  explanation: string;
+  studentMistakeDetected?: string;
+  confidence: number;
+}
+
 export interface OmniRouteRequest {
-  action: 'chat' | 'synthesize' | 'quiz' | 'audio_script' | 'mindmap' | 'diagnose' | 'flashcards' | 'ping';
+  action:
+    | 'chat'
+    | 'synthesize'
+    | 'quiz'
+    | 'audio_script'
+    | 'mindmap'
+    | 'diagnose'
+    | 'flashcards'
+    | 'ping'
+    | 'math_solve'
+    | 'review_essay'
+    | 'lecture_notes'
+    | 'md2anki'
+    | 'vision_solve'
+    | 'parse_pdf';
   subject?: string;
   topic?: string;
   context?: string;
@@ -162,6 +243,16 @@ export interface OmniRouteRequest {
   history?: SocraticMessage[];
   quizAnswers?: { questionId: string; selectedIndex: number }[];
   config?: Partial<OmniRouteConfig>;
+  source?: 'uploaded' | 'outside' | 'mixed';
+  count?: number;
+  persona?: AgentPersona;
+  mathExpression?: string;
+  essayText?: string;
+  markdownNotes?: string;
+  imageData?: string;
+  imageMimeType?: string;
+  pdfData?: string;
+  pdfFileName?: string;
 }
 
 export interface OmniRouteResponse {
@@ -172,4 +263,6 @@ export interface OmniRouteResponse {
   error?: string;
   isOfflineFallback?: boolean;
   webSources?: WebSearchSource[];
+  route?: string;
 }
+

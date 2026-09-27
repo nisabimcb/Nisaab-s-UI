@@ -1,21 +1,22 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 :root {
-  --bg-base: #0b0f17;
-  --bg-surface: #111622;
-  --bg-card: #131926;
-  --bg-card-hover: #172032;
-  --bg-input: #0e131d;
+  --bg-base: #09090b;
+  --bg-surface: #0f0f12;
+  --bg-card: #141416;
+  --bg-card-hover: #1a1a1e;
+  --bg-input: #121215;
 
   --blue-500: #3b82f6;
   --blue-600: #2563eb;
 
-  --primary-border: #1e293b;
-  --border-subtle: #1e293b;
+  --primary-border: #27272a;
+  --border-subtle: #1f1f23;
 
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
 }
 
 body {

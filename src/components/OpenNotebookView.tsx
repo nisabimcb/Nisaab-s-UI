@@ -17,6 +17,8 @@ import {
   ExternalLink,
   Trash2,
   Upload,
+  MessageSquare,
+  Mic,
 } from "lucide-react";
 import {
   NotebookDocument,
@@ -25,6 +27,7 @@ import {
   Citation,
   OmniRouteConfig,
   WebSearchSource,
+  StudyMemo,
 } from "@/types/stem";
 
 interface OpenNotebookViewProps {
@@ -51,9 +54,36 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
   const [documents, setDocuments] = useState<NotebookDocument[]>([DEFAULT_NOTE]);
   const [selectedDocId, setSelectedDocId] = useState<string>("doc-my-first-note");
   const [isMounted, setIsMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"text" | "summary" | "podcast">("text");
+  const [activeTab, setActiveTab] = useState<"text" | "summary" | "podcast" | "memos" | "lecture">("text");
 
-  // Load from localStorage on mount (prevents hydration mismatch)
+  // Study Memos State
+  const [memos, setMemos] = useState<StudyMemo[]>([
+    {
+      id: "memo-1",
+      content: "Always check Kelvin temperature conversion for Carnot numericals: K = °C + 273.15.",
+      tag: "#formula",
+      timestamp: "10:30 AM",
+      date: new Date().toLocaleDateString([], { month: "short", day: "numeric" }),
+    },
+    {
+      id: "memo-2",
+      content: "Third law of thermodynamics states Absolute Zero is unattainable, which prevents 100% engine efficiency.",
+      tag: "#concept",
+      timestamp: "11:15 AM",
+      date: new Date().toLocaleDateString([], { month: "short", day: "numeric" }),
+    },
+  ]);
+  const [newMemoText, setNewMemoText] = useState("");
+  const [newMemoTag, setNewMemoTag] = useState("#concept");
+  const [memoFilter, setMemoFilter] = useState("all");
+
+  // Lecture Mode State
+  const [lectureTranscript, setLectureTranscript] = useState("");
+  const [lectureTitle, setLectureTitle] = useState("");
+  const [isProcessingLecture, setIsProcessingLecture] = useState(false);
+  const [lectureResult, setLectureResult] = useState<StudySummary | null>(null);
+
+  // Load from localStorage on mount
   useEffect(() => {
     setIsMounted(true);
     try {
@@ -65,8 +95,23 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
           setSelectedDocId(parsed[0].id);
         }
       }
+      const savedMemos = localStorage.getItem("student_study_memos");
+      if (savedMemos) {
+        const parsedM = JSON.parse(savedMemos);
+        if (Array.isArray(parsedM) && parsedM.length > 0) {
+          setMemos(parsedM);
+        }
+      }
     } catch {}
   }, []);
+
+  // Save memos whenever updated
+  useEffect(() => {
+    if (!isMounted) return;
+    try {
+      localStorage.setItem("student_study_memos", JSON.stringify(memos));
+    } catch {}
+  }, [memos, isMounted]);
 
   // New Note Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -94,7 +139,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
     {
       role: "assistant",
       content:
-        "Welcome to your personal Study Notebook! I am grounded in whatever notes and textbooks you add, and I can search the live web with Google Gemini to pull the latest papers, solutions, and explanations.",
+        "Ready to research. Ask questions grounded in your notes or with live Google web research.",
     },
   ]);
   const [inputQuery, setInputQuery] = useState("");
@@ -109,7 +154,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
   const activeDoc = documents.find((d) => d.id === selectedDocId) || documents[0];
 
-  // Save documents to localStorage whenever updated after mount
+  // Save documents to localStorage
   useEffect(() => {
     if (!isMounted) return;
     try {
@@ -221,11 +266,72 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
         ...prev,
         {
           role: "assistant",
-          content: `Regarding "${query}":\n\n• Analysis: According to your study material on "${activeDoc?.title || "STEM"}", review the primary equations and boundary principles.\n• Key Exam Tip: Always confirm SI units and state assumptions clearly.\n\nWhat other aspect would you like to explore?`,
+          content: `Regarding "${query}":\n\n• Analysis: According to your study material on "${activeDoc?.title || "STEM"}", review the primary equations and boundary principles.\n• Key Exam Tip: Always confirm SI units and state assumptions clearly.`,
         },
       ]);
     } finally {
       setIsQuerying(false);
+    }
+  };
+
+  // PDF Upload State
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
+
+  const handlePdfUpload = async (file: File) => {
+    if (!file || !file.name.toLowerCase().endsWith(".pdf")) {
+      alert("Please select a valid PDF document (.pdf).");
+      return;
+    }
+
+    setIsUploadingPdf(true);
+    setPdfUploadError(null);
+
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+      });
+      reader.readAsDataURL(file);
+      const dataUrl = await base64Promise;
+
+      const res = await fetch("/api/ai/omni-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "parse_pdf",
+          pdfData: dataUrl,
+          pdfFileName: file.name,
+          config: omniConfig,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.data) {
+        const parsed = data.data;
+        const newDoc: NotebookDocument = {
+          id: `doc-pdf-${Date.now()}`,
+          subject: parsed.subject || "Academic Study",
+          title: parsed.title || file.name.replace(/\.pdf$/i, ""),
+          chapter: parsed.chapter || "Uploaded PDF Chapter",
+          content: parsed.content || "Content extracted from uploaded PDF.",
+          sourceType: "textbook",
+          uploadedAt: new Date().toISOString(),
+        };
+
+        setDocuments((prev) => [newDoc, ...prev]);
+        setSelectedDocId(newDoc.id);
+        setActiveTab("text");
+        setIsAddModalOpen(false);
+      } else {
+        throw new Error(data.error || "Could not parse PDF content");
+      }
+    } catch (err: any) {
+      console.error("PDF upload error:", err);
+      setPdfUploadError(err.message || "Failed to process PDF");
+    } finally {
+      setIsUploadingPdf(false);
     }
   };
 
@@ -314,103 +420,123 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0b0f17] text-slate-100 overflow-hidden">
-      {/* Top Header */}
-      <div className="border-b border-slate-800 bg-[#0e131f] px-5 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-blue-600/15 border border-blue-500/25 flex items-center justify-center text-blue-400">
-            <BookOpen className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-xs font-semibold text-white">
-              My STEM Study Notebooks
-            </h1>
-            <p className="text-[11px] text-slate-400">
-              Personalized document grounding, Google web research, and audio overviews
-            </p>
-          </div>
+    <div className="flex-1 flex flex-col h-full bg-[#09090b] text-zinc-100 overflow-hidden">
+      {/* Top Header - Slim Minimal Bar */}
+      <div className="border-b border-zinc-800/70 bg-[#09090b] px-4 py-2 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-zinc-200">
+            Notebooks
+          </span>
+          <span className="text-[11px] text-zinc-400 font-mono">
+            {documents.length} notes
+          </span>
         </div>
 
-        {/* Web Search Grounding Toggle */}
+        {/* Minimal Actions */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
               webSearchEnabled
-                ? "bg-slate-800 border-blue-500/30 text-blue-400"
-                : "bg-slate-900 border-slate-800 text-slate-500"
+                ? "bg-zinc-800 border-zinc-700 text-zinc-200"
+                : "bg-zinc-900 border-zinc-800 text-zinc-500"
             }`}
             title="Toggle Gemini Live Google Search Grounding"
           >
-            <Globe className="w-3.5 h-3.5" />
+            <Globe className="w-3 h-3 text-zinc-400" />
             <span>Search Grounding: {webSearchEnabled ? "ON" : "OFF"}</span>
           </button>
 
+          <label
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 transition-colors cursor-pointer ${
+              isUploadingPdf ? "opacity-60 pointer-events-none" : ""
+            }`}
+            title="Upload textbook chapter, past paper, or lecture notes PDF"
+          >
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handlePdfUpload(e.target.files[0]);
+                  e.target.value = "";
+                }
+              }}
+            />
+            {isUploadingPdf ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Ingesting PDF...</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload PDF</span>
+              </>
+            )}
+          </label>
+
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-medium transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add Study Material</span>
+            <span>Note</span>
           </button>
         </div>
       </div>
 
       {/* Main 3-Column Studio Layout */}
       <div className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
-        {/* Left Column: My Notebook Materials (Col 1-3) */}
-        <div className="col-span-3 border-r border-slate-800 bg-[#0e131f]/70 p-4 flex flex-col justify-between overflow-y-auto">
+        {/* Column 1: Materials List (Col 1-3) */}
+        <div className="col-span-3 border-r border-zinc-800/70 bg-[#09090b] p-3 flex flex-col justify-between overflow-y-auto">
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                My Materials ({documents.length})
-              </span>
+            <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 mb-2 px-1">
+              Documents
             </div>
 
             {documents.length === 0 ? (
-              <div className="p-5 text-center rounded-xl bg-slate-900 border border-slate-800">
-                <FileText className="w-6 h-6 mx-auto text-slate-500 mb-2" />
-                <p className="text-xs font-medium text-slate-300">No notes yet</p>
-                <p className="text-[11px] text-slate-400 mt-1 mb-3">
-                  Paste your textbook chapter, lecture notes, or past papers.
-                </p>
+              <div className="p-4 text-center rounded-lg bg-[#121215] border border-zinc-800">
+                <FileText className="w-5 h-5 mx-auto text-zinc-500 mb-1.5" />
+                <p className="text-xs font-medium text-zinc-300">No notes</p>
                 <button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium"
+                  className="mt-2 px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-200 text-xs font-medium"
                 >
-                  Create First Note
+                  Create note
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {documents.map((doc) => {
                   const isSelected = doc.id === activeDoc?.id;
                   return (
                     <div
                       key={doc.id}
                       onClick={() => setSelectedDocId(doc.id)}
-                      className={`p-3 rounded-lg border transition-colors cursor-pointer relative group ${
+                      className={`p-2.5 rounded-lg border transition-colors cursor-pointer relative group ${
                         isSelected
-                          ? "bg-slate-800 border-blue-500 text-white"
-                          : "bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700"
+                          ? "bg-zinc-800/90 border-zinc-700 text-zinc-100"
+                          : "bg-[#121215] border-zinc-800/80 text-zinc-300 hover:border-zinc-700/80"
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                        <span className="text-[10px] font-medium uppercase px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
                           {doc.subject}
                         </span>
                         <button
                           onClick={(e) => handleDeleteDoc(doc.id, e)}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-400 transition-opacity"
+                          className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-rose-400 transition-opacity"
                           title="Delete note"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                       <div className="text-xs font-medium mt-1 line-clamp-1">
                         {doc.title}
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                      <div className="text-[11px] text-zinc-400 mt-0.5 line-clamp-2 leading-relaxed">
                         {doc.content}
                       </div>
                     </div>
@@ -422,11 +548,11 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
           {/* Quick Actions */}
           {activeDoc && (
-            <div className="mt-4 pt-3 border-t border-slate-800 space-y-2">
+            <div className="mt-3 pt-2.5 border-t border-zinc-800/70 space-y-1.5">
               <button
                 onClick={handleSynthesize}
                 disabled={isSynthesizing}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isSynthesizing ? (
                   <>
@@ -435,8 +561,8 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-3.5 h-3.5 text-blue-200" />
-                    <span>Synthesize Study Guide</span>
+                    <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Synthesize Guide</span>
                   </>
                 )}
               </button>
@@ -444,7 +570,7 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
               <button
                 onClick={handleGeneratePodcast}
                 disabled={isGeneratingPodcast}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isGeneratingPodcast ? (
                   <>
@@ -453,8 +579,8 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   </>
                 ) : (
                   <>
-                    <Volume2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Generate Audio Podcast</span>
+                    <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Audio Podcast</span>
                   </>
                 )}
               </button>
@@ -462,72 +588,60 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
           )}
         </div>
 
-        {/* Center Column: Live Document Reader & Study Brief (Col 4-8) */}
-        <div className="col-span-5 border-r border-slate-800 p-5 flex flex-col overflow-y-auto bg-[#0e131f]">
-          {/* Tabs */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setActiveTab("text")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                  activeTab === "text"
-                    ? "bg-slate-800 text-white"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Note Content
-              </button>
-              <button
-                onClick={() => setActiveTab("summary")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                  activeTab === "summary"
-                    ? "bg-slate-800 text-white"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Study Brief
-              </button>
-              <button
-                onClick={() => setActiveTab("podcast")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                  activeTab === "podcast"
-                    ? "bg-slate-800 text-white"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>Audio Podcast</span>
-              </button>
+        {/* Column 2: Live Document Reader & Workspace (Col 4-8) */}
+        <div className="col-span-5 border-r border-zinc-800/70 p-4 flex flex-col overflow-y-auto bg-[#0c0c0e]">
+          {/* Minimal Sub-Tabs */}
+          <div className="flex items-center justify-between border-b border-zinc-800/70 pb-2.5 mb-3.5">
+            <div className="flex items-center gap-1 flex-wrap">
+              {[
+                { id: "text", label: "Note Content" },
+                { id: "summary", label: "Study Brief" },
+                { id: "podcast", label: "Audio Podcast" },
+                { id: "memos", label: "Memos" },
+                { id: "lecture", label: "Lecture Mode" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    activeTab === tab.id
+                      ? "bg-zinc-800 text-zinc-100 border border-zinc-700"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            <span className="text-[11px] text-slate-400 font-medium">
-              {activeDoc?.subject || "STEM Note"}
+            <span className="text-[11px] text-zinc-400 font-mono hidden md:inline">
+              {activeDoc?.subject || "STEM"}
             </span>
           </div>
 
           {/* Tab 1: Source Document Text */}
           {activeTab === "text" && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {activeDoc ? (
-                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-blue-400">
+                    <span className="text-xs font-medium text-zinc-300">
                       {activeDoc.chapter}
                     </span>
-                    <span className="text-[10px] text-slate-500">
+                    <span className="text-[10px] text-zinc-400 font-mono">
                       {activeDoc.content.split(" ").length} words
                     </span>
                   </div>
-                  <h2 className="text-sm font-semibold text-white mb-3">
+                  <h2 className="text-sm font-medium text-zinc-100 mb-2.5">
                     {activeDoc.title}
                   </h2>
-                  <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-line font-sans">
+                  <div className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line font-sans">
                     {activeDoc.content}
                   </div>
                 </div>
               ) : (
-                <div className="p-8 text-center text-slate-400 text-xs">
-                  No note selected. Click &quot;Add Study Material&quot; to begin.
+                <div className="p-8 text-center text-zinc-500 text-xs">
+                  No note selected. Click &quot;Note&quot; to begin.
                 </div>
               )}
             </div>
@@ -535,56 +649,56 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
           {/* Tab 2: Executive Study Brief */}
           {activeTab === "summary" && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {summary ? (
                 <>
-                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 mb-2">
-                      <Lightbulb className="w-4 h-4" />
-                      <span>Executive Concept Summary</span>
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-200 mb-2">
+                      <Lightbulb className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Concept Summary</span>
                     </div>
-                    <p className="text-xs text-slate-300 leading-relaxed">
+                    <p className="text-xs text-zinc-300 leading-relaxed">
                       {summary.executiveSummary}
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
-                    <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wider mb-2">
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80">
+                    <h3 className="text-xs font-medium text-zinc-300 uppercase tracking-wider mb-2">
                       Key Formulas &amp; Definitions
                     </h3>
                     <ul className="space-y-1.5">
                       {summary.keyFormulasAndDefinitions.map((f, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                        <li key={i} className="flex items-start gap-2 text-xs text-zinc-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 mt-1.5 shrink-0" />
                           <span>{f}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-800/40">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 mb-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      <span>Exam Pitfalls to Avoid</span>
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-amber-400/90 mb-2">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Exam Pitfalls</span>
                     </div>
                     <ul className="space-y-1.5">
                       {summary.boardExamPitfalls.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-amber-200/90">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                        <li key={i} className="flex items-start gap-2 text-xs text-zinc-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 mt-1.5 shrink-0" />
                           <span>{p}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
-                    <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80">
+                    <h3 className="text-xs font-medium text-zinc-300 uppercase tracking-wider mb-2">
                       Suggested Review Questions
                     </h3>
                     <ul className="space-y-2">
                       {summary.suggestedReviewQuestions.map((q, i) => (
-                        <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                          <span className="text-emerald-400 font-semibold font-mono">Q{i + 1}.</span>
+                        <li key={i} className="text-xs text-zinc-300 flex items-start gap-2">
+                          <span className="text-zinc-500 font-mono">Q{i + 1}.</span>
                           <span>{q}</span>
                         </li>
                       ))}
@@ -592,51 +706,51 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   </div>
                 </>
               ) : (
-                <div className="p-8 text-center text-slate-400 text-xs">
-                  Click &quot;AI Synthesize Study Guide&quot; in the left sidebar to generate an executive concept brief from your note.
+                <div className="p-8 text-center text-zinc-500 text-xs">
+                  Click &quot;Synthesize Guide&quot; in the left sidebar to generate a concept brief.
                 </div>
               )}
             </div>
           )}
 
-          {/* Tab 3: NotebookLM Style Audio Podcast */}
+          {/* Tab 3: Audio Podcast */}
           {activeTab === "podcast" && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {podcast ? (
                 <>
-                  <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                        Interactive Podcast Overview (2 Speakers)
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80 shadow-xs">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] uppercase font-mono text-zinc-400">
+                        Educational Dialogue
                       </span>
-                      <span className="text-xs text-slate-400 font-mono">
+                      <span className="text-xs text-zinc-400 font-mono">
                         {podcast.duration}
                       </span>
                     </div>
 
-                    <h3 className="text-xs font-semibold text-white mb-2">
+                    <h3 className="text-xs font-medium text-zinc-200 mb-2">
                       {podcast.topic}
                     </h3>
 
                     {/* Player Controls */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800">
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#09090b] border border-zinc-800">
+                      <div className="flex items-center gap-2.5">
                         <button
                           onClick={playPodcastAudio}
-                          className="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center transition-colors cursor-pointer"
+                          className="w-7 h-7 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 flex items-center justify-center transition-colors cursor-pointer"
                         >
                           {isPlayingAudio ? (
-                            <Pause className="w-4 h-4 fill-white" />
+                            <Pause className="w-3.5 h-3.5 fill-current" />
                           ) : (
-                            <Play className="w-4 h-4 fill-white ml-0.5" />
+                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                           )}
                         </button>
                         <div>
-                          <div className="text-xs font-medium text-white">
-                            {isPlayingAudio ? "Now Playing" : "Paused"}
+                          <div className="text-xs font-medium text-zinc-200">
+                            {isPlayingAudio ? "Playing" : "Paused"}
                           </div>
-                          <div className="text-[10px] text-slate-400">
-                            Speaker: {podcast.dialogue[activeSpeakerIndex]?.speaker}
+                          <div className="text-[10px] text-zinc-400">
+                            {podcast.dialogue[activeSpeakerIndex]?.speaker}
                           </div>
                         </div>
                       </div>
@@ -647,10 +761,10 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                           <button
                             key={spd}
                             onClick={() => setAudioSpeed(spd)}
-                            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
                               audioSpeed === spd
-                                ? "bg-slate-800 text-blue-400 border border-slate-700"
-                                : "text-slate-400 hover:text-white"
+                                ? "bg-zinc-800 text-zinc-100 border border-zinc-700"
+                                : "text-zinc-500 hover:text-zinc-300"
                             }`}
                           >
                             {spd}x
@@ -664,29 +778,24 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   <div className="space-y-2">
                     {podcast.dialogue.map((line, idx) => {
                       const isCurrent = isPlayingAudio && activeSpeakerIndex === idx;
-                      const isSarah = line.speaker.includes("Sarah");
                       return (
                         <div
                           key={idx}
                           className={`p-3 rounded-lg border transition-colors ${
                             isCurrent
-                              ? "bg-slate-800/90 border-blue-500/50"
-                              : "bg-slate-900/60 border-slate-800"
+                              ? "bg-zinc-800/80 border-zinc-700"
+                              : "bg-[#121215] border-zinc-800/70"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span
-                              className={`text-[10px] font-semibold ${
-                                isSarah ? "text-blue-400" : "text-emerald-400"
-                              }`}
-                            >
+                            <span className="text-[10px] font-medium text-zinc-400">
                               {line.speaker}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[10px] text-zinc-400 font-mono">
                               {line.timestamp}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-300 leading-relaxed">
+                          <p className="text-xs text-zinc-300 leading-relaxed">
                             {line.text}
                           </p>
                         </div>
@@ -695,51 +804,283 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   </div>
                 </>
               ) : (
-                <div className="p-8 text-center text-slate-400 text-xs">
-                  Click &quot;Generate Audio Podcast&quot; in the left sidebar to produce an educational podcast dialogue from your note.
+                <div className="p-8 text-center text-zinc-500 text-xs">
+                  Click &quot;Audio Podcast&quot; in the left sidebar to produce an educational dialogue.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 4: Study Memos Timeline */}
+          {activeTab === "memos" && (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl bg-[#121215] border border-zinc-800/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Quick Memos</span>
+                  </h3>
+                  <span className="text-[10px] text-zinc-400 font-mono">
+                    {memos.length} logged
+                  </span>
+                </div>
+
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={newMemoText}
+                    onChange={(e) => setNewMemoText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newMemoText.trim()) {
+                        const newMemo: StudyMemo = {
+                          id: `memo-${Date.now()}`,
+                          content: newMemoText.trim(),
+                          tag: newMemoTag,
+                          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                          date: new Date().toLocaleDateString([], { month: "short", day: "numeric" }),
+                        };
+                        setMemos([newMemo, ...memos]);
+                        setNewMemoText("");
+                      }
+                    }}
+                    placeholder="Capture a quick thought or reminder..."
+                    className="flex-1 px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                  />
+                  <select
+                    value={newMemoTag}
+                    onChange={(e) => setNewMemoTag(e.target.value)}
+                    className="px-2 py-1 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-300"
+                  >
+                    <option value="#concept">#concept</option>
+                    <option value="#formula">#formula</option>
+                    <option value="#exam_tip">#exam_tip</option>
+                    <option value="#log">#log</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newMemoText.trim()) return;
+                      const newMemo: StudyMemo = {
+                        id: `memo-${Date.now()}`,
+                        content: newMemoText.trim(),
+                        tag: newMemoTag,
+                        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                        date: new Date().toLocaleDateString([], { month: "short", day: "numeric" }),
+                      };
+                      setMemos([newMemo, ...memos]);
+                      setNewMemoText("");
+                    }}
+                    className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium border border-zinc-700 cursor-pointer"
+                  >
+                    Post
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1 pt-0.5">
+                  {["all", "#concept", "#formula", "#exam_tip", "#log"].map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setMemoFilter(t)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                        memoFilter === t
+                          ? "bg-zinc-800 text-zinc-100 border border-zinc-700"
+                          : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Memo Timeline */}
+              <div className="space-y-2">
+                {memos
+                  .filter((m) => memoFilter === "all" || m.tag === memoFilter)
+                  .map((memo) => (
+                    <div
+                      key={memo.id}
+                      className="p-3 rounded-lg bg-[#121215] border border-zinc-800/80 hover:border-zinc-700 transition-colors relative group"
+                    >
+                      <div className="flex items-center justify-between text-[11px] mb-1">
+                        <span className="text-[10px] font-mono text-zinc-400">
+                          {memo.tag}
+                        </span>
+                        <div className="flex items-center gap-2 text-zinc-500 text-[10px]">
+                          <span>{memo.date} · {memo.timestamp}</span>
+                          <button
+                            onClick={() => setMemos(memos.filter((m) => m.id !== memo.id))}
+                            className="text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-zinc-200 leading-relaxed">{memo.content}</p>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 5: Lecture Mode */}
+          {activeTab === "lecture" && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-200">
+                    <Mic className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Lecture Synthesizer</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-500">
+                    Paste transcript or audio notes
+                  </span>
+                </div>
+
+                <input
+                  type="text"
+                  value={lectureTitle}
+                  onChange={(e) => setLectureTitle(e.target.value)}
+                  placeholder="Lecture Topic (e.g. Thermodynamics Carnot Cycle)"
+                  className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                />
+
+                <textarea
+                  rows={5}
+                  value={lectureTranscript}
+                  onChange={(e) => setLectureTranscript(e.target.value)}
+                  placeholder="Paste lecture audio transcript, professor speech notes, or bullet points here..."
+                  className="w-full px-2.5 py-1.5 text-xs font-mono rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                />
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    Gemini API
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isProcessingLecture || !lectureTranscript.trim()}
+                    onClick={async () => {
+                      setIsProcessingLecture(true);
+                      try {
+                        const res = await fetch("/api/ai/omni-route", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            action: "lecture_notes",
+                            subject: activeDoc?.subject || "Academic",
+                            topic: lectureTitle || "University Lecture",
+                            transcript: lectureTranscript,
+                            config: omniConfig,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (data.success && data.data) {
+                          setLectureResult(data.data);
+                        }
+                      } catch (err) {
+                        console.error("Lecture processing error:", err);
+                      } finally {
+                        setIsProcessingLecture(false);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium border border-zinc-700 cursor-pointer disabled:opacity-50"
+                  >
+                    {isProcessingLecture ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Synthesizing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Extract Notes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {lectureResult && (
+                <div className="space-y-2.5">
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-zinc-200">Synthesized Lecture Overview</span>
+                      <button
+                        onClick={() => {
+                          const newDoc: NotebookDocument = {
+                            id: `doc-${Date.now()}`,
+                            subject: activeDoc?.subject || "Physics",
+                            title: lectureTitle || "Synthesized Lecture Notes",
+                            chapter: "Lecture Notes",
+                            content: `${lectureResult.executiveSummary}\n\nKey Formulas:\n${lectureResult.keyFormulasAndDefinitions.join("\n")}`,
+                            sourceType: "notes",
+                            uploadedAt: new Date().toISOString(),
+                          };
+                          setDocuments([newDoc, ...documents]);
+                          setSelectedDocId(newDoc.id);
+                          setActiveTab("text");
+                        }}
+                        className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>Save to Documents</span>
+                      </button>
+                    </div>
+                    <p className="text-xs text-zinc-300 leading-relaxed">{lectureResult.executiveSummary}</p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800/80 space-y-1.5">
+                    <h4 className="text-xs font-medium text-zinc-300">Key Points</h4>
+                    <ul className="space-y-1">
+                      {lectureResult.keyFormulasAndDefinitions.map((f, idx) => (
+                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-2">
+                          <span className="text-zinc-500 mt-1">•</span>
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Right Column: Q&A with Live Web Search (Col 9-12) */}
-        <div className="col-span-4 p-4 flex flex-col justify-between overflow-hidden bg-[#0b0f17]">
+        {/* Column 3: Q&A with Live Web Search (Col 9-12) */}
+        <div className="col-span-4 p-3.5 flex flex-col justify-between overflow-hidden bg-[#09090b]">
           <div>
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                <span className="text-xs font-semibold text-white">
-                  RAG &amp; Live Web Research
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400">
-                {webSearchEnabled ? "Google Search Active" : "Note Grounded"}
+            <div className="flex items-center justify-between border-b border-zinc-800/70 pb-2 mb-2.5">
+              <span className="text-xs font-medium text-zinc-200">
+                Research Chat
+              </span>
+              <span className="text-[10px] text-zinc-500 font-mono">
+                {webSearchEnabled ? "Live Web" : "Notes Only"}
               </span>
             </div>
 
             {/* Chat Messages */}
-            <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-270px)] pr-1">
+            <div className="space-y-2.5 overflow-y-auto max-h-[calc(100vh-170px)] pr-1">
               {chatMessages.map((msg, i) => (
                 <div
                   key={i}
                   className={`p-3 rounded-xl text-xs leading-relaxed ${
                     msg.role === "user"
-                      ? "bg-blue-600 text-white ml-4"
-                      : "bg-slate-900 border border-slate-800 text-slate-200 mr-2"
+                      ? "bg-zinc-800 text-zinc-100 ml-4"
+                      : "bg-[#121215] border border-zinc-800/80 text-zinc-200 mr-2"
                   }`}
                 >
-                  <div className="text-[10px] font-semibold text-slate-400 mb-1">
-                    {msg.role === "user" ? "You" : "Study Assistant (Gemini / OmniRoute)"}
+                  <div className="text-[10px] text-zinc-400 mb-1">
+                    {msg.role === "user" ? "You" : "Copilot"}
                   </div>
                   <div className="whitespace-pre-line">{msg.content}</div>
 
                   {/* Web Sources Chips */}
                   {msg.webSources && msg.webSources.length > 0 && (
-                    <div className="mt-2.5 pt-2 border-t border-slate-800">
-                      <div className="text-[10px] font-semibold text-blue-400 flex items-center gap-1 mb-1.5">
+                    <div className="mt-2 pt-2 border-t border-zinc-800/60">
+                      <div className="text-[10px] text-zinc-400 flex items-center gap-1 mb-1">
                         <Globe className="w-3 h-3" />
-                        <span>Google Search Grounding Sources:</span>
+                        <span>Sources:</span>
                       </div>
                       <div className="flex flex-col gap-1">
                         {msg.webSources.slice(0, 3).map((src, sIdx) => (
@@ -748,12 +1089,12 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                             href={src.uri}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[10px] text-blue-400 flex items-center justify-between transition-colors"
+                            className="p-1 rounded-md bg-[#09090b] hover:bg-zinc-800 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center justify-between transition-colors"
                           >
-                            <span className="truncate max-w-[240px] font-medium">
+                            <span className="truncate max-w-[200px]">
                               {src.title}
                             </span>
-                            <ExternalLink className="w-3 h-3 shrink-0 ml-1 opacity-70" />
+                            <ExternalLink className="w-3 h-3 shrink-0 ml-1 opacity-50" />
                           </a>
                         ))}
                       </div>
@@ -763,12 +1104,12 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
               ))}
 
               {isQuerying && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[#121215] border border-zinc-800 text-xs text-zinc-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>
                     {webSearchEnabled
-                      ? "Searching Google &amp; grounding with notes..."
-                      : "Analyzing document..."}
+                      ? "Searching Google &amp; notes..."
+                      : "Analyzing note..."}
                   </span>
                 </div>
               )}
@@ -778,23 +1119,19 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
           {/* Ask Input */}
           <form
             onSubmit={handleAskQuestion}
-            className="mt-3 pt-3 border-t border-slate-800 flex gap-2"
+            className="mt-2 pt-2 border-t border-zinc-800/70 flex gap-1.5"
           >
             <input
               type="text"
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
-              placeholder={
-                webSearchEnabled
-                  ? "Ask anything (searches live Google web & notes)..."
-                  : "Ask about this note..."
-              }
-              className="flex-1 px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              placeholder="Ask anything..."
+              className="flex-1 px-2.5 py-1.5 text-xs rounded-md bg-[#121215] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
             />
             <button
               type="submit"
               disabled={isQuerying || !inputQuery.trim()}
-              className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center"
+              className="px-2.5 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-medium disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center"
             >
               <Send className="w-3.5 h-3.5" />
             </button>
@@ -804,19 +1141,71 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
 
       {/* Add Custom Note Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-xl bg-[#0e131f] border border-slate-800 p-6 shadow-xl">
-            <h3 className="text-sm font-semibold text-white mb-1">
-              Add New Study Material / Note
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Paste textbook text, notes, equations, or past paper questions.
-            </p>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-xl bg-[#121215] border border-zinc-800 p-5 shadow-xl space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-xs font-medium text-zinc-200">
+                New Study Material
+              </h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick PDF Import Zone */}
+            <div className="p-3 rounded-lg border border-dashed border-zinc-700/80 bg-zinc-950/60 text-center space-y-2">
+              <div className="text-xs font-medium text-zinc-200 flex items-center justify-center gap-1.5">
+                <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Upload PDF Document</span>
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                Upload textbook chapters, past paper questions, or lecture notes (.pdf). Gemini automatically parses and extracts study sections.
+              </p>
+              <label
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 transition-colors cursor-pointer ${
+                  isUploadingPdf ? "opacity-60 pointer-events-none" : ""
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handlePdfUpload(e.target.files[0]);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                {isUploadingPdf ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Extracting PDF Content...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Choose PDF File</span>
+                  </>
+                )}
+              </label>
+              {pdfUploadError && (
+                <div className="text-[10px] text-rose-400">{pdfUploadError}</div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 my-1">
+              <div className="flex-1 h-px bg-zinc-800" />
+              <span className="text-[10px] text-zinc-500 uppercase font-mono">or enter manually</span>
+              <div className="flex-1 h-px bg-zinc-800" />
+            </div>
 
             <form onSubmit={handleAddNote} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-medium text-slate-300 block mb-1">
+                  <label className="text-[10px] text-zinc-400 block mb-1">
                     Subject
                   </label>
                   <input
@@ -824,12 +1213,12 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     required
                     value={newSubject}
                     onChange={(e) => setNewSubject(e.target.value)}
-                    placeholder="e.g. Physics, Chemistry, CS"
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
+                    placeholder="e.g. Physics, CS"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 focus:outline-none focus:border-zinc-700"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-medium text-slate-300 block mb-1">
+                  <label className="text-[10px] text-zinc-400 block mb-1">
                     Chapter / Unit
                   </label>
                   <input
@@ -837,13 +1226,13 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                     value={newChapter}
                     onChange={(e) => setNewChapter(e.target.value)}
                     placeholder="e.g. Chapter 4: Motion"
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 focus:outline-none focus:border-zinc-700"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-medium text-slate-300 block mb-1">
+                <label className="text-[10px] text-zinc-400 block mb-1">
                   Topic Title
                 </label>
                 <input
@@ -851,38 +1240,38 @@ Warning for exams: Always convert Celsius to Kelvin (K = °C + 273.15).`,
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Newton Laws and Momentum Conservation"
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500"
+                  placeholder="e.g. Newton Laws and Momentum"
+                  className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 focus:outline-none focus:border-zinc-700"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-medium text-slate-300 block mb-1">
-                  Content (Paste Text)
+                <label className="text-[10px] text-zinc-400 block mb-1">
+                  Content
                 </label>
                 <textarea
                   rows={6}
                   required
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
-                  placeholder="Paste your study content, definitions, formulas, or past questions here..."
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500 font-sans"
+                  placeholder="Paste your study content, definitions, formulas, or notes here..."
+                  className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 focus:outline-none focus:border-zinc-700 font-sans"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white cursor-pointer"
+                  className="px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium border border-zinc-700 cursor-pointer"
                 >
-                  Save &amp; Ingest
+                  Save Note
                 </button>
               </div>
             </form>

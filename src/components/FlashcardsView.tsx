@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react";
 import {
   Layers,
   Sparkles,
-  RotateCcw,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -13,6 +11,9 @@ import {
   Shuffle,
   Loader2,
   BookOpen,
+  Download,
+  FileText,
+  Calendar,
 } from "lucide-react";
 import { Flashcard, OmniRouteConfig } from "@/types/stem";
 
@@ -103,6 +104,11 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
     } catch {}
   }, [cards, isMounted]);
 
+  // md2anki state
+  const [isMd2AnkiOpen, setIsMd2AnkiOpen] = useState(false);
+  const [markdownNotes, setMarkdownNotes] = useState("");
+  const [isParsingMarkdown, setIsParsingMarkdown] = useState(false);
+
   // Filter cards by subject
   const filteredCards = cards.filter(
     (c) => selectedSubject === "All" || c.subject.toLowerCase() === selectedSubject.toLowerCase()
@@ -120,10 +126,50 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
     setCurrentIndex((prev) => (prev - 1 + filteredCards.length) % (filteredCards.length || 1));
   };
 
-  const handleRateCard = (status: "learning" | "mastered" | "new") => {
+  // FSRS Spaced Repetition Grading (Again, Hard, Good, Easy)
+  const handleFSRSRating = (grade: "again" | "hard" | "good" | "easy") => {
     if (!activeCard) return;
+    const currentEase = activeCard.easeFactor || 2.5;
+    const currentInterval = activeCard.intervalDays || 1;
+    const reviewCount = (activeCard.reviewCount || 0) + 1;
+
+    let newInterval = 1;
+    let newEase = currentEase;
+    let newStatus: "new" | "learning" | "mastered" = "learning";
+
+    if (grade === "again") {
+      newInterval = 1;
+      newEase = Math.max(1.3, currentEase - 0.2);
+      newStatus = "new";
+    } else if (grade === "hard") {
+      newInterval = 1;
+      newEase = Math.max(1.3, currentEase - 0.15);
+      newStatus = "learning";
+    } else if (grade === "good") {
+      newInterval = Math.max(2, Math.round(currentInterval * currentEase));
+      newStatus = "learning";
+    } else if (grade === "easy") {
+      newInterval = Math.max(4, Math.round(currentInterval * currentEase * 1.3));
+      newEase = currentEase + 0.15;
+      newStatus = "mastered";
+    }
+
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + newInterval);
+
     setCards((prev) =>
-      prev.map((c) => (c.id === activeCard.id ? { ...c, status } : c))
+      prev.map((c) =>
+        c.id === activeCard.id
+          ? {
+              ...c,
+              intervalDays: newInterval,
+              easeFactor: Number(newEase.toFixed(2)),
+              reviewCount,
+              nextReviewDate: nextDate.toISOString(),
+              status: newStatus,
+            }
+          : c
+      )
     );
     handleNext();
   };
@@ -134,13 +180,62 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
     setCurrentIndex(0);
   };
 
-  const handleResetProgress = () => {
-    setCards((prev) => prev.map((c) => ({ ...c, status: "new" })));
-    setCurrentIndex(0);
-    setIsFlipped(false);
+  // Export to Anki (.txt / TSV)
+  const handleExportAnki = () => {
+    if (cards.length === 0) return;
+    const header = "#separator:tab\n#html:false\n#tags column:3\n";
+    const rows = cards
+      .map((c) => {
+        const cleanFront = c.front.replace(/\t/g, " ").replace(/\n/g, "<br>");
+        const cleanBack = c.back.replace(/\t/g, " ").replace(/\n/g, "<br>");
+        const tag = `${c.subject}_${c.category || "General"}`.replace(/\s+/g, "_");
+        return `${cleanFront}\t${cleanBack}\t${tag}`;
+      })
+      .join("\n");
+
+    const blob = new Blob([header + rows], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Anki_STEM_Deck_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  // Generate with OmniRoute / AI
+  // md2anki Markdown Parser
+  const handleParseMarkdownToAnki = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!markdownNotes.trim()) return;
+
+    setIsParsingMarkdown(true);
+    try {
+      const res = await fetch("/api/ai/omni-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "md2anki",
+          markdown: markdownNotes,
+          config: omniConfig,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+        setCards((prev) => [...data.data, ...prev]);
+        setMarkdownNotes("");
+        setIsMd2AnkiOpen(false);
+        setCurrentIndex(0);
+        setIsFlipped(false);
+      }
+    } catch (err) {
+      console.error("md2anki error:", err);
+    } finally {
+      setIsParsingMarkdown(false);
+    }
+  };
+
+  // Generate with Gemini / AI
   const handleAIGenerateCards = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!generateTopic.trim()) return;
@@ -205,31 +300,46 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
   const masteryPercentage = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0b0f17] text-slate-100 overflow-y-auto p-5 md:p-6">
-      <div className="max-w-4xl mx-auto w-full space-y-5">
-        {/* Top Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div>
-            <h1 className="text-base font-semibold text-white flex items-center gap-2">
-              <Layers className="w-4 h-4 text-blue-400" />
-              <span>Study Flashcards</span>
+    <div className="flex-1 flex flex-col h-full bg-[#09090b] text-zinc-100 overflow-y-auto p-4 md:p-6">
+      <div className="max-w-3xl mx-auto w-full space-y-4">
+        {/* Minimal Header */}
+        <div className="flex items-center justify-between gap-3 pb-3 border-b border-zinc-800/70">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-sm font-medium text-zinc-200">
+              Flashcards
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Active recall &amp; spaced repetition for STEM laws, formulas, and derivations
-            </p>
+            <span className="text-[11px] text-zinc-400 font-mono">
+              {cards.length} cards · {masteryPercentage}% mastered
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsMd2AnkiOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs transition-colors cursor-pointer"
+              title="Parse raw Markdown study notes into Anki cards (md2anki)"
+            >
+              <FileText className="w-3.5 h-3.5 text-zinc-400" />
+              <span>md2anki</span>
+            </button>
+            <button
+              onClick={handleExportAnki}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs transition-colors cursor-pointer"
+              title="Export deck to Anki (.txt)"
+            >
+              <Download className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Export</span>
+            </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-medium transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>New Card</span>
+              <span>New</span>
             </button>
             <button
               onClick={handleShuffle}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+              className="p-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition-colors cursor-pointer"
               title="Shuffle Cards"
             >
               <Shuffle className="w-3.5 h-3.5" />
@@ -243,13 +353,13 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
             type="text"
             value={generateTopic}
             onChange={(e) => setGenerateTopic(e.target.value)}
-            placeholder="Generate flashcards for any topic (e.g. Photoelectric effect, Newton's laws)..."
-            className="flex-1 px-3.5 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+            placeholder="Generate cards for any topic (e.g. Carnot engine, Kirchhoff's laws)..."
+            className="flex-1 px-3 py-1.5 text-xs rounded-md bg-[#121215] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
           />
           <button
             type="submit"
             disabled={isGenerating || !generateTopic.trim()}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer shrink-0"
           >
             {isGenerating ? (
               <>
@@ -258,16 +368,16 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
               </>
             ) : (
               <>
-                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                <span>AI Generate</span>
+                <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Generate</span>
               </>
             )}
           </button>
         </form>
 
-        {/* Subject Filter Pills & Stats */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
+        {/* Minimal Subject Filter Strip */}
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-1 overflow-x-auto py-0.5">
             {["All", "Physics", "Chemistry", "Biology", "Mathematics", "CS"].map((sub) => (
               <button
                 key={sub}
@@ -276,10 +386,10 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
                   setCurrentIndex(0);
                   setIsFlipped(false);
                 }}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                   selectedSubject.toLowerCase() === sub.toLowerCase()
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                    ? "bg-zinc-800 text-zinc-100 border border-zinc-700"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
                 }`}
               >
                 {sub}
@@ -287,49 +397,41 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
             ))}
           </div>
 
-          <div className="text-[11px] text-slate-400 flex items-center gap-3">
-            <span>
-              Mastered: <strong className="text-emerald-400">{masteredCount}</strong> / {totalCount} ({masteryPercentage}%)
-            </span>
-            <span>
-              Learning: <strong className="text-amber-400">{learningCount}</strong>
-            </span>
+          <div className="text-[11px] text-zinc-400 shrink-0">
+            Card {currentIndex + 1} of {filteredCards.length}
           </div>
         </div>
 
-        {/* Main Flashcard Container */}
+        {/* Minimal Flashcard Body */}
         {filteredCards.length > 0 && activeCard ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div
               onClick={() => setIsFlipped(!isFlipped)}
-              className="min-h-[280px] p-6 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition-all cursor-pointer flex flex-col justify-between shadow-sm relative select-none"
+              className="min-h-[260px] p-6 rounded-xl bg-[#121215] border border-zinc-800/80 hover:border-zinc-700/80 transition-all cursor-pointer flex flex-col justify-between relative select-none"
             >
               {/* Card Meta Header */}
-              <div className="flex items-center justify-between text-xs text-slate-400 pb-3 border-b border-slate-800/80">
+              <div className="flex items-center justify-between text-xs text-zinc-400 pb-3 border-b border-zinc-800/60">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300">
                     {activeCard.subject}
                   </span>
                   {activeCard.category && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-600/10 text-blue-400 border border-blue-500/20">
+                    <span className="text-[10px] text-zinc-400">
                       {activeCard.category}
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 text-[11px]">
-                  <span>
-                    Card {currentIndex + 1} of {filteredCards.length}
-                  </span>
+                <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+                  <span>{activeCard.status}</span>
                   <span
-                    className={`w-2 h-2 rounded-full ${
+                    className={`w-1.5 h-1.5 rounded-full ${
                       activeCard.status === "mastered"
-                        ? "bg-emerald-400"
+                        ? "bg-emerald-500"
                         : activeCard.status === "learning"
-                        ? "bg-amber-400"
-                        : "bg-slate-500"
+                        ? "bg-amber-500"
+                        : "bg-zinc-600"
                     }`}
-                    title={`Status: ${activeCard.status}`}
                   />
                 </div>
               </div>
@@ -338,103 +440,142 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
               <div className="py-6 flex flex-col items-center justify-center text-center">
                 {!isFlipped ? (
                   <div className="space-y-2 max-w-lg">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                      Question / Concept
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
+                      Question
                     </span>
-                    <h2 className="text-base sm:text-lg font-medium text-slate-100 leading-snug">
+                    <h2 className="text-base sm:text-lg font-medium text-zinc-100 leading-snug">
                       {activeCard.front}
                     </h2>
-                    <p className="text-[11px] text-slate-500 pt-3">
-                      Click to flip or reveal explanation
+                    <p className="text-[11px] text-zinc-400 pt-3">
+                      Click to reveal answer
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-w-xl text-left w-full">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
                       Answer &amp; Derivation
                     </span>
-                    <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-line">
+                    <div className="text-xs sm:text-sm text-zinc-200 leading-relaxed whitespace-pre-line">
                       {activeCard.back}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Card Meta Footer */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-[11px] text-slate-500">
-                <span>{isFlipped ? "Showing Back" : "Showing Front"}</span>
-                <span className="text-slate-400">Press Space or click to flip</span>
+              {/* Card Footer */}
+              <div className="flex items-center justify-between pt-3 border-t border-zinc-800/60 text-[11px] text-zinc-400">
+                <span>{isFlipped ? "Answer Side" : "Prompt Side"}</span>
+                <span>Click card or button below to flip</span>
               </div>
             </div>
 
-            {/* Recall Rating Buttons (When flipped) */}
+            {/* FSRS Spaced Repetition Buttons */}
             {isFlipped && (
-              <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs text-slate-400 font-medium">
-                  Rate your understanding:
-                </span>
-                <div className="flex items-center gap-2">
+              <div className="p-3 rounded-lg bg-[#121215] border border-zinc-800/80 space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>FSRS Rating</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-400 font-mono">
+                    Ease {activeCard.easeFactor || 2.5}x · Interval {activeCard.intervalDays || 1}d
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 pt-0.5">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleRateCard("new");
+                      handleFSRSRating("again");
                     }}
-                    className="px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/40 text-rose-300 text-xs font-medium transition-colors cursor-pointer"
+                    className="p-2 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-center transition-colors cursor-pointer"
                   >
-                    Needs Practice
+                    <div className="text-xs font-medium text-zinc-200 flex items-center justify-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500/80" />
+                      <span>Again</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 mt-0.5">&lt; 1d</div>
                   </button>
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleRateCard("learning");
+                      handleFSRSRating("hard");
                     }}
-                    className="px-3 py-1.5 rounded-md bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/40 text-amber-300 text-xs font-medium transition-colors cursor-pointer"
+                    className="p-2 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-center transition-colors cursor-pointer"
                   >
-                    Reviewing
+                    <div className="text-xs font-medium text-zinc-200 flex items-center justify-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80" />
+                      <span>Hard</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 mt-0.5">1d</div>
                   </button>
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleRateCard("mastered");
+                      handleFSRSRating("good");
                     }}
-                    className="px-3 py-1.5 rounded-md bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/40 text-emerald-300 text-xs font-medium transition-colors cursor-pointer"
+                    className="p-2 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-center transition-colors cursor-pointer"
                   >
-                    Mastered
+                    <div className="text-xs font-medium text-zinc-200 flex items-center justify-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500/80" />
+                      <span>Good</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 mt-0.5">
+                      {Math.max(2, Math.round((activeCard.intervalDays || 1) * (activeCard.easeFactor || 2.5)))}d
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFSRSRating("easy");
+                    }}
+                    className="p-2 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-center transition-colors cursor-pointer"
+                  >
+                    <div className="text-xs font-medium text-zinc-200 flex items-center justify-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/80" />
+                      <span>Easy</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 mt-0.5">
+                      {Math.max(4, Math.round((activeCard.intervalDays || 1) * (activeCard.easeFactor || 2.5) * 1.3))}d
+                    </div>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Navigation Bar */}
+            {/* Navigation Strip */}
             <div className="flex items-center justify-between pt-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={handlePrev}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs transition-colors cursor-pointer"
                 >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span>Previous</span>
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Prev</span>
                 </button>
                 <button
                   onClick={handleNext}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs transition-colors cursor-pointer"
                 >
                   <span>Next</span>
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setIsFlipped(!isFlipped)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/25 text-blue-400 text-xs font-medium transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
                 >
                   {isFlipped ? "Flip to Front" : "Flip to Back"}
                 </button>
 
                 <button
                   onClick={handleDeleteActiveCard}
-                  className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-rose-950/40 text-slate-500 hover:text-rose-400 border border-slate-800 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 border border-zinc-800 transition-colors cursor-pointer"
                   title="Delete Card"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -443,12 +584,12 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
             </div>
           </div>
         ) : (
-          <div className="p-8 rounded-xl bg-slate-900/50 border border-slate-800 text-center space-y-3">
-            <BookOpen className="w-6 h-6 text-slate-500 mx-auto" />
-            <h3 className="text-sm font-semibold text-slate-300">
+          <div className="p-8 rounded-xl bg-[#121215] border border-zinc-800/80 text-center space-y-2">
+            <BookOpen className="w-5 h-5 text-zinc-500 mx-auto" />
+            <h3 className="text-xs font-medium text-zinc-300">
               No flashcards in this subject
             </h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            <p className="text-[11px] text-zinc-500">
               Generate cards on any topic with the AI input above or create custom cards manually.
             </p>
           </div>
@@ -457,13 +598,13 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
 
       {/* Add Custom Card Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-[#111622] border border-slate-800 rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="text-sm font-semibold text-white">Create Custom Flashcard</h3>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#121215] border border-zinc-800 rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-xs font-medium text-zinc-200">New Flashcard</h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-white text-xs cursor-pointer"
+                className="text-zinc-500 hover:text-zinc-300 text-xs cursor-pointer"
               >
                 ✕
               </button>
@@ -472,11 +613,11 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
             <form onSubmit={handleAddCustomCard} className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Subject</label>
+                  <label className="text-[10px] text-zinc-400 block mb-1">Subject</label>
                   <select
                     value={newSubject}
                     onChange={(e) => setNewSubject(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200"
                   >
                     <option value="Physics">Physics</option>
                     <option value="Chemistry">Chemistry</option>
@@ -487,11 +628,11 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Category</label>
+                  <label className="text-[10px] text-zinc-400 block mb-1">Category</label>
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200"
                   >
                     <option value="Formula">Formula</option>
                     <option value="Concept">Concept</option>
@@ -503,43 +644,112 @@ export default function FlashcardsView({ omniConfig }: FlashcardsViewProps) {
               </div>
 
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Front (Prompt / Term)</label>
+                <label className="text-[10px] text-zinc-400 block mb-1">Front (Prompt / Term)</label>
                 <textarea
                   rows={2}
                   value={newFront}
                   onChange={(e) => setNewFront(e.target.value)}
                   placeholder="e.g. State Lenz's Law of Electromagnetic Induction"
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Back (Answer / Derivation)</label>
+                <label className="text-[10px] text-zinc-400 block mb-1">Back (Answer / Derivation)</label>
                 <textarea
                   rows={4}
                   value={newBack}
                   onChange={(e) => setNewBack(e.target.value)}
-                  placeholder="e.g. The induced current always opposes the change in magnetic flux that produces it..."
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  placeholder="e.g. The induced current always opposes the change in magnetic flux..."
+                  className="w-full px-3 py-2 text-xs rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                   required
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white"
+                  className="px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium border border-zinc-700 cursor-pointer"
                 >
                   Save Card
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* md2anki Markdown Parser Modal */}
+      {isMd2AnkiOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#121215] border border-zinc-800 rounded-xl p-5 max-w-lg w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                <h3 className="text-xs font-medium text-zinc-200">md2anki Parser</h3>
+              </div>
+              <button
+                onClick={() => setIsMd2AnkiOpen(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-400">
+              Paste Markdown study notes. Gemini extracts key definitions and formulas directly into cards.
+            </p>
+
+            <form onSubmit={handleParseMarkdownToAnki} className="space-y-3">
+              <div>
+                <textarea
+                  rows={8}
+                  value={markdownNotes}
+                  onChange={(e) => setMarkdownNotes(e.target.value)}
+                  placeholder={`# Chapter 11: Thermodynamics\n- **Carnot Cycle**: Ideal reversible cycle with 4 stages.\n- **First Law**: dQ = dU + dW.\n- **Efficiency**: η = 1 - (T2/T1).`}
+                  className="w-full px-3 py-2 text-xs font-mono rounded-md bg-[#09090b] border border-zinc-800 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-700"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  Gemini API
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsMd2AnkiOpen(false)}
+                    className="px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isParsingMarkdown || !markdownNotes.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium border border-zinc-700 cursor-pointer disabled:opacity-50"
+                  >
+                    {isParsingMarkdown ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Parsing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Convert to Cards</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

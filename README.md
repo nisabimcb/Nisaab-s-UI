@@ -6,26 +6,30 @@ A state-of-the-art, minimal, and responsive Student Management web application b
 
 ## 🚀 Quick Start & How to Access
 
-### 1. Running Locally
-The development server runs on `localhost:3000`:
+### 1. Python Math Engine Setup (1-Click Installer)
+When sharing this project with a new user or evaluator, they can install all necessary libraries with a single command:
 ```bash
-npm run dev
+python setup.py
 ```
+This automatically verifies Python 3.9+, installs `sympy`, `fastapi`, `uvicorn`, `google-genai`, `pillow`, `pdfplumber`, etc., and verifies the SymPy Computer Algebra System.
 
-### 2. How to Access the Student Section
-You can access the Student Section in **three simple ways**:
+To launch both the Python backend and web app together:
+- On Windows: double-click `start_all.bat`
+- Or manually:
+  ```bash
+  # Terminal 1: Python Math & Vision Backend (Port 8000)
+  python run_python_backend.py
 
-1. **Direct Standalone Route (No Login Required)**:
-   Navigate directly in your browser to:
-   👉 **[http://localhost:3000/students](http://localhost:3000/students)**
-   This immediately loads the full Student Section with both the **Student Directory & Roster** and the **Interactive Student Portal**.
+  # Terminal 2: Web App Interface (Port 3000)
+  npm run dev
+  ```
 
-2. **From the Login Screen (1-Click Instant Demo)**:
-   Navigate to **[http://localhost:3000](http://localhost:3000)** and click the glowing button:
-   👉 **"Open Student Area"** (bypasses credential entry and logs in instantly).
-
-3. **From the Top Navigation Header**:
-   Click the **"Student Area"** button located in the top navigation bar from any screen.
+### 2. Standalone Python Math CLI
+You can test symbolic solving and derivations directly from the command line:
+```bash
+python -m python_backend.cli solve "2x^2 + 5x - 3 = 0"
+python -m python_backend.cli solve "integrate x*sin(x) dx"
+```
 
 ---
 
